@@ -3,7 +3,8 @@ import { Pool } from "pg";
 import { config } from "./config.js";
 
 export const pool = new Pool({
-  connectionString: config.databaseUrl
+  connectionString: config.databaseUrl,
+  connectionTimeoutMillis: 10000
 });
 
 export async function migrateDatabase() {

@@ -5,9 +5,13 @@ import { ensureStorageBucket } from "./storage.js";
 import { initializeStore } from "./store.js";
 
 async function startServer() {
+  console.log("SpotLog startup: running database migrations");
   await migrateDatabase();
+  console.log("SpotLog startup: ensuring storage bucket");
   await ensureStorageBucket();
+  console.log("SpotLog startup: initializing seed data");
   await initializeStore();
+  console.log("SpotLog startup: creating express app");
 
   const app = createApp();
 
