@@ -19,14 +19,19 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Build checklist</Text>
-          <Text style={styles.item}>Auth screens scaffolded</Text>
-          <Text style={styles.item}>Feed and map routes scaffolded</Text>
-          <Text style={styles.item}>Create flow prepared for photo + GPS</Text>
-          <Text style={styles.item}>API integration next</Text>
+          <Text style={styles.sectionTitle}>Account status</Text>
+          <Text style={styles.item}>Auth token stored securely on device</Text>
+          <Text style={styles.item}>Spots sync against the OSC-hosted API</Text>
+          <Text style={styles.item}>Photos upload into OSC object storage</Text>
+          <Text style={styles.item}>Location capture uses the current GPS position</Text>
         </View>
 
-        <Pressable onPress={signOut} style={styles.button}>
+        <Pressable
+          onPress={() => {
+            void signOut();
+          }}
+          style={styles.button}
+        >
           <Text style={styles.buttonLabel}>Sign Out</Text>
         </Pressable>
       </View>

@@ -1,11 +1,42 @@
+import MapView, { Marker } from "react-native-maps";
 import { Link } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
 
-import { mockSpots } from "@/src/data/mockSpots";
+import { useAuth } from "@/src/context/AuthContext";
+import { getSpots } from "@/src/lib/api";
 import { theme } from "@/src/theme/tokens";
+import type { Spot } from "@/src/types/api";
 
 export default function MapScreen() {
+  const { token } = useAuth();
+  const [spots, setSpots] = useState<Spot[]>([]);
+  const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      if (!token) {
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const loadedSpots = await getSpots(token);
+        setSpots(loadedSpots);
+        setSelectedSpot(loadedSpots[0] ?? null);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, [token]);
+
+  const initialSpot = selectedSpot ?? spots[0];
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -15,38 +46,56 @@ export default function MapScreen() {
         </View>
 
         <View style={styles.mapFrame}>
-          {mockSpots.map((spot, index) => (
-            <View
-              key={spot.id}
-              style={[
-                styles.pin,
-                {
-                  backgroundColor: spot.accentColor,
-                  left: `${18 + index * 22}%`,
-                  top: `${20 + (index % 2) * 26}%`
-                }
-              ]}
-            />
-          ))}
-          <View style={styles.mapOverlay}>
-            <Text style={styles.mapOverlayTitle}>Interactive map comes next</Text>
-            <Text style={styles.mapOverlayBody}>
-              This scaffold reserves the route and visual behavior for the real
-              map screen.
-            </Text>
-          </View>
+          {loading ? (
+            <View style={styles.mapOverlay}>
+              <ActivityIndicator color={theme.colors.accent} />
+              <Text style={styles.mapOverlayBody}>Loading your saved places...</Text>
+            </View>
+          ) : initialSpot ? (
+            <MapView
+              initialRegion={{
+                latitude: initialSpot.latitude,
+                longitude: initialSpot.longitude,
+                latitudeDelta: 0.08,
+                longitudeDelta: 0.08
+              }}
+              style={StyleSheet.absoluteFillObject}
+            >
+              {spots.map((spot) => (
+                <Marker
+                  coordinate={{
+                    latitude: spot.latitude,
+                    longitude: spot.longitude
+                  }}
+                  key={spot.id}
+                  onPress={() => setSelectedSpot(spot)}
+                  pinColor={spot.favorited ? theme.colors.accent : "#8C9A8B"}
+                  title={spot.title}
+                />
+              ))}
+            </MapView>
+          ) : (
+            <View style={styles.mapOverlay}>
+              <Text style={styles.mapOverlayTitle}>No spots yet</Text>
+              <Text style={styles.mapOverlayBody}>
+                Save your first place and it will appear on the map.
+              </Text>
+            </View>
+          )}
         </View>
 
-        <View style={styles.previewCard}>
-          <Text style={styles.previewLabel}>Selected pin</Text>
-          <Text style={styles.previewTitle}>{mockSpots[1].title}</Text>
-          <Text style={styles.previewBody}>{mockSpots[1].note}</Text>
-          <Link href="/spot/2" asChild>
-            <Pressable style={styles.previewButton}>
-              <Text style={styles.previewButtonLabel}>Open detail</Text>
-            </Pressable>
-          </Link>
-        </View>
+        {selectedSpot ? (
+          <View style={styles.previewCard}>
+            <Text style={styles.previewLabel}>Selected pin</Text>
+            <Text style={styles.previewTitle}>{selectedSpot.title}</Text>
+            <Text style={styles.previewBody}>{selectedSpot.note}</Text>
+            <Link href={`/spot/${selectedSpot.id}` as const} asChild>
+              <Pressable style={styles.previewButton}>
+                <Text style={styles.previewButtonLabel}>Open detail</Text>
+              </Pressable>
+            </Link>
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -86,19 +135,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     position: "relative"
   },
-  pin: {
-    borderColor: theme.colors.background,
-    borderRadius: 999,
-    borderWidth: 3,
-    height: 20,
-    position: "absolute",
-    width: 20
-  },
   mapOverlay: {
     backgroundColor: "rgba(248, 244, 236, 0.92)",
     borderRadius: 22,
+    gap: 8,
     bottom: 18,
     left: 18,
+    alignItems: "center",
     padding: 16,
     position: "absolute",
     right: 18

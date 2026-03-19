@@ -1,8 +1,11 @@
+import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,18 +15,143 @@ import {
 } from "react-native";
 
 import { useAuth } from "@/src/context/AuthContext";
-import { createSpot } from "@/src/lib/api";
+import { createSpot, uploadPhoto } from "@/src/lib/api";
 import { theme } from "@/src/theme/tokens";
+import type { SpotPhoto } from "@/src/types/api";
+
+type PendingPhoto = SpotPhoto & {
+  localUri: string;
+};
 
 export default function AddSpotScreen() {
   const { token } = useAuth();
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
+  const [photos, setPhotos] = useState<PendingPhoto[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [location, setLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    async function loadCurrentLocation() {
+      const permission = await Location.requestForegroundPermissionsAsync();
+
+      if (!permission.granted) {
+        setLocationError("Location access is required to save a spot.");
+        return;
+      }
+
+      try {
+        const current = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced
+        });
+
+        setLocation({
+          latitude: current.coords.latitude,
+          longitude: current.coords.longitude
+        });
+      } catch {
+        setLocationError("Could not determine your current location.");
+      }
+    }
+
+    loadCurrentLocation();
+  }, []);
+
+  async function uploadAssets(
+    assets: ImagePicker.ImagePickerAsset[] | null | undefined
+  ) {
+    if (!token || !assets || assets.length === 0) {
+      return;
+    }
+
+    setPhotoBusy(true);
+    setError(null);
+
+    try {
+      const uploadedPhotos = await Promise.all(
+        assets.map(async (asset) => {
+          const extension = asset.fileName?.split(".").pop() ?? "jpg";
+          const uploaded = await uploadPhoto(token, {
+            uri: asset.uri,
+            name: asset.fileName ?? `spot-${Date.now()}.${extension}`,
+            type: asset.mimeType ?? "image/jpeg"
+          });
+
+          return {
+            ...uploaded,
+            localUri: asset.uri
+          } satisfies PendingPhoto;
+        })
+      );
+
+      setPhotos((current) => [...current, ...uploadedPhotos]);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error ? requestError.message : "Could not upload image"
+      );
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function handleOpenCamera() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (!permission.granted) {
+      setError("Camera access was denied. You can still choose from the gallery.");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      mediaTypes: ["images"],
+      quality: 0.8
+    });
+
+    if (!result.canceled) {
+      await uploadAssets(result.assets);
+    }
+  }
+
+  async function handleOpenLibrary() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      setError("Photo library access is required to add pictures.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsMultipleSelection: true,
+      mediaTypes: ["images"],
+      orderedSelection: true,
+      quality: 0.8,
+      selectionLimit: 6
+    });
+
+    if (!result.canceled) {
+      await uploadAssets(result.assets);
+    }
+  }
+
   async function handleSave() {
     if (!token) {
+      return;
+    }
+
+    if (!location) {
+      setError(locationError ?? "Current location is still loading.");
+      return;
+    }
+
+    if (photos.length === 0) {
+      setError("Add at least one photo before saving a spot.");
       return;
     }
 
@@ -34,9 +162,9 @@ export default function AddSpotScreen() {
       const spot = await createSpot(token, {
         title,
         note,
-        latitude: 59.3293,
-        longitude: 18.0686,
-        photos: []
+        latitude: location.latitude,
+        longitude: location.longitude,
+        photos: photos.map(({ localUri, ...photo }) => photo)
       });
 
       router.push(`/spot/${spot.id}`);
@@ -60,21 +188,40 @@ export default function AddSpotScreen() {
         </View>
 
         <View style={styles.uploadRow}>
-          <Pressable style={styles.uploadCard}>
+          <Pressable onPress={handleOpenCamera} style={styles.uploadCard}>
             <Text style={styles.uploadCardTitle}>Take photo</Text>
-            <Text style={styles.uploadCardText}>Open camera</Text>
+            <Text style={styles.uploadCardText}>Open camera and upload</Text>
           </Pressable>
-          <Pressable style={styles.uploadCard}>
+          <Pressable onPress={handleOpenLibrary} style={styles.uploadCard}>
             <Text style={styles.uploadCardTitle}>Choose photos</Text>
-            <Text style={styles.uploadCardText}>From gallery</Text>
+            <Text style={styles.uploadCardText}>From gallery, immediately uploaded</Text>
           </Pressable>
         </View>
 
         <View style={styles.photoStrip}>
-          <View style={[styles.photoPreview, { backgroundColor: "#C8D5C2" }]} />
-          <View style={[styles.photoPreview, { backgroundColor: "#D7C9B8" }]} />
-          <View style={[styles.photoPreview, { backgroundColor: "#A4B9B0" }]} />
+          {photos.length > 0 ? (
+            photos.map((photo) => (
+              <Image
+                key={photo.id}
+                source={{ uri: photo.localUri }}
+                style={styles.photoPreview}
+              />
+            ))
+          ) : (
+            <>
+              <View style={[styles.photoPreview, { backgroundColor: "#C8D5C2" }]} />
+              <View style={[styles.photoPreview, { backgroundColor: "#D7C9B8" }]} />
+              <View style={[styles.photoPreview, { backgroundColor: "#A4B9B0" }]} />
+            </>
+          )}
         </View>
+
+        {photoBusy ? (
+          <View style={styles.inlineState}>
+            <ActivityIndicator color={theme.colors.accent} />
+            <Text style={styles.inlineStateText}>Uploading images...</Text>
+          </View>
+        ) : null}
 
         <View style={styles.form}>
           <TextInput
@@ -97,17 +244,22 @@ export default function AddSpotScreen() {
 
         <View style={styles.locationCard}>
           <Text style={styles.locationLabel}>Current location</Text>
-          <Text style={styles.locationValue}>59.3293, 18.0686</Text>
+          <Text style={styles.locationValue}>
+            {location
+              ? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
+              : "Locating..."}
+          </Text>
           <Text style={styles.locationHint}>
-            In MVP this will use current GPS only, with a permission prompt if
-            access is denied.
+            Current GPS only. If permission is denied, saving is blocked until
+            location access is granted.
           </Text>
         </View>
 
+        {locationError ? <Text style={styles.error}>{locationError}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Pressable
-          disabled={saving}
+          disabled={saving || photoBusy}
           onPress={handleSave}
           style={[styles.saveButton, saving && styles.buttonDisabled]}
         >
@@ -171,12 +323,13 @@ const styles = StyleSheet.create({
   },
   photoStrip: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10
   },
   photoPreview: {
     borderRadius: 20,
-    flex: 1,
-    height: 120
+    height: 120,
+    width: 100
   },
   form: {
     gap: 12
@@ -235,6 +388,15 @@ const styles = StyleSheet.create({
     color: "#A04B41",
     fontSize: 14,
     lineHeight: 20
+  },
+  inlineState: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10
+  },
+  inlineStateText: {
+    color: theme.colors.subtleText,
+    fontSize: 14
   },
   buttonDisabled: {
     opacity: 0.7

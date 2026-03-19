@@ -1,6 +1,15 @@
 import { Link, Stack, router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import MapView, { Marker } from "react-native-maps";
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
+} from "react-native";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/src/context/AuthContext";
@@ -82,14 +91,34 @@ export default function SpotDetailScreen() {
 
           {!loading && !error && spot ? (
             <>
-          <View
-            style={[
-              styles.heroImage,
-              {
-                backgroundColor: theme.colors.surfaceMuted
-              }
-            ]}
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            style={styles.heroStrip}
           >
+            {(spot.photos.length > 0 ? spot.photos : [{ id: "placeholder", imageUrl: "", storageKey: "", createdAt: spot.createdAt }]).map((photo) =>
+              photo.imageUrl ? (
+                <Image
+                  key={photo.id}
+                  source={{ uri: photo.imageUrl }}
+                  style={styles.heroImage}
+                />
+              ) : (
+                <View
+                  key={photo.id}
+                  style={[
+                    styles.heroImage,
+                    {
+                      backgroundColor: theme.colors.surfaceMuted
+                    }
+                  ]}
+                />
+              )
+            )}
+          </ScrollView>
+
+          <View style={styles.heroBadge}>
             <Text style={styles.heroImageLabel}>{spot.photos.length} photos</Text>
           </View>
 
@@ -103,16 +132,24 @@ export default function SpotDetailScreen() {
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Mini map</Text>
-            <View style={styles.miniMap}>
-              <View
-                style={[
-                  styles.miniPin,
-                  {
-                    backgroundColor: theme.colors.accent
-                  }
-                ]}
+            <MapView
+              initialRegion={{
+                latitude: spot.latitude,
+                longitude: spot.longitude,
+                latitudeDelta: 0.02,
+                longitudeDelta: 0.02
+              }}
+              pointerEvents="none"
+              style={styles.miniMap}
+            >
+              <Marker
+                coordinate={{
+                  latitude: spot.latitude,
+                  longitude: spot.longitude
+                }}
+                pinColor={theme.colors.accent}
               />
-            </View>
+            </MapView>
           </View>
 
           <Link href={`/spot/edit/${spot.id}` as const} asChild>
@@ -147,13 +184,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 18
   },
+  heroStrip: {
+    marginTop: 8
+  },
   heroImage: {
-    alignItems: "flex-end",
     borderRadius: 32,
     height: 280,
-    justifyContent: "flex-end",
-    marginTop: 8,
-    padding: 18
+    marginRight: 12,
+    width: 320
+  },
+  heroBadge: {
+    alignSelf: "flex-end",
+    marginTop: -58,
+    zIndex: 1
   },
   heroImageLabel: {
     backgroundColor: "rgba(248, 244, 236, 0.9)",
@@ -193,20 +236,9 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   miniMap: {
-    backgroundColor: theme.colors.mapSurface,
     borderRadius: 20,
     height: 160,
-    position: "relative"
-  },
-  miniPin: {
-    borderColor: theme.colors.background,
-    borderRadius: 999,
-    borderWidth: 3,
-    height: 22,
-    left: "56%",
-    position: "absolute",
-    top: "44%",
-    width: 22
+    overflow: "hidden"
   },
   button: {
     alignItems: "center",

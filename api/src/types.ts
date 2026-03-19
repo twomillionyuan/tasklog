@@ -42,3 +42,16 @@ export type SpotResponse = {
   updatedAt: string;
   photos: SpotPhoto[];
 };
+
+export type SpotRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  note: string;
+  latitude: number;
+  longitude: number;
+  favorited: boolean;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+};

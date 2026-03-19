@@ -1,15 +1,12 @@
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
-import type { AuthUser, SessionRecord, SpotPhoto, SpotRecord, SpotResponse } from "./types.js";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
-type UserRecord = AuthUser & {
-  passwordHash: string;
-};
-
-const users = new Map<string, UserRecord>();
-const usersByEmail = new Map<string, UserRecord>();
-const sessions = new Map<string, SessionRecord>();
-const spots = new Map<string, SpotRecord>();
+import { config } from "./config.js";
+import { pool } from "./db.js";
+import { removeImage } from "./storage.js";
+import type { AuthUser, SpotPhoto, SpotResponse, SpotRow } from "./types.js";
 
 const seedSpots = [
   {
@@ -17,129 +14,206 @@ const seedSpots = [
     note: "Warm light over the water and the quietest five minutes of the day.",
     latitude: 59.3197,
     longitude: 18.0583,
-    favorited: true,
-    accent: "montelius"
+    favorited: true
   },
   {
     title: "Rosendals Garden",
     note: "Coffee, gravel paths, and the kind of afternoon that makes the city feel slower.",
     latitude: 59.3247,
     longitude: 18.1459,
-    favorited: false,
-    accent: "rosendal"
+    favorited: false
   },
   {
     title: "Skeppsholmen Walk",
     note: "Windy, bright, and worth it for the skyline view back toward the old town.",
     latitude: 59.3252,
     longitude: 18.0918,
-    favorited: true,
-    accent: "skeppsholmen"
+    favorited: true
   }
 ] as const;
 
-let defaultUserSeeded = false;
+type UserRecord = AuthUser & {
+  passwordHash: string;
+};
 
-function hashPassword(password: string) {
-  return createHash("sha256").update(password).digest("hex");
+function toAuthUser(user: UserRecord): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    createdAt: user.createdAt
+  };
 }
 
-function passwordsMatch(password: string, storedHash: string) {
-  const incoming = Buffer.from(hashPassword(password));
-  const stored = Buffer.from(storedHash);
+async function getUserByEmail(email: string) {
+  const result = await pool.query<{
+    id: string;
+    email: string;
+    password_hash: string;
+    created_at: string;
+  }>(
+    `
+      SELECT id, email, password_hash, created_at
+      FROM users
+      WHERE email = $1
+      LIMIT 1
+    `,
+    [email]
+  );
 
-  if (incoming.length !== stored.length) {
-    return false;
+  const row = result.rows[0];
+
+  if (!row) {
+    return null;
   }
 
-  return timingSafeEqual(incoming, stored);
+  return {
+    id: row.id,
+    email: row.email,
+    passwordHash: row.password_hash,
+    createdAt: row.created_at
+  } satisfies UserRecord;
 }
 
-function buildSeedPhotos(spotId: string, accent: string): SpotPhoto[] {
-  return [
-    {
-      id: randomUUID(),
-      imageUrl: `https://images.osaas.local/${accent}/1.jpg`,
-      storageKey: `seed/${spotId}/${accent}-1.jpg`,
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: randomUUID(),
-      imageUrl: `https://images.osaas.local/${accent}/2.jpg`,
-      storageKey: `seed/${spotId}/${accent}-2.jpg`,
-      createdAt: new Date().toISOString()
-    }
-  ];
-}
+async function getSpotPhotos(spotIds: string[]) {
+  if (spotIds.length === 0) {
+    return new Map<string, SpotPhoto[]>();
+  }
 
-function seedSpotsForUser(userId: string) {
-  for (const template of seedSpots) {
-    const id = randomUUID();
-    const createdAt = new Date().toISOString();
+  const result = await pool.query<{
+    id: string;
+    spot_id: string;
+    storage_key: string;
+    image_url: string;
+    created_at: string;
+  }>(
+    `
+      SELECT id, spot_id, storage_key, image_url, created_at
+      FROM spot_photos
+      WHERE spot_id = ANY($1::text[])
+      ORDER BY created_at ASC
+    `,
+    [spotIds]
+  );
 
-    spots.set(id, {
-      id,
-      userId,
-      title: template.title,
-      note: template.note,
-      latitude: template.latitude,
-      longitude: template.longitude,
-      favorited: template.favorited,
-      createdAt,
-      updatedAt: createdAt,
-      deletedAt: null,
-      photos: buildSeedPhotos(id, template.accent)
+  const grouped = new Map<string, SpotPhoto[]>();
+
+  for (const row of result.rows) {
+    const current = grouped.get(row.spot_id) ?? [];
+    current.push({
+      id: row.id,
+      storageKey: row.storage_key,
+      imageUrl: row.image_url,
+      createdAt: row.created_at
     });
+    grouped.set(row.spot_id, current);
   }
+
+  return grouped;
 }
 
-function ensureDefaultUser() {
-  if (defaultUserSeeded || usersByEmail.has("ebba@example.com")) {
-    defaultUserSeeded = true;
+function toSpotResponse(spot: SpotRow, photos: SpotPhoto[] = []): SpotResponse {
+  return {
+    id: spot.id,
+    title: spot.title,
+    note: spot.note,
+    latitude: spot.latitude,
+    longitude: spot.longitude,
+    favorited: spot.favorited,
+    createdAt: spot.created_at,
+    updatedAt: spot.updated_at,
+    photos
+  };
+}
+
+export async function initializeStore() {
+  const existing = await getUserByEmail("ebba@example.com");
+
+  if (existing) {
     return;
   }
 
-  const user: UserRecord = {
-    id: randomUUID(),
-    email: "ebba@example.com",
-    passwordHash: hashPassword("secret12"),
-    createdAt: new Date().toISOString()
-  };
+  const passwordHash = await bcrypt.hash("secret12", 10);
+  const createdAt = new Date().toISOString();
+  const userId = randomUUID();
 
-  users.set(user.id, user);
-  usersByEmail.set(user.email, user);
-  seedSpotsForUser(user.id);
-  defaultUserSeeded = true;
+  await pool.query(
+    `
+      INSERT INTO users (id, email, password_hash, created_at)
+      VALUES ($1, $2, $3, $4)
+    `,
+    [userId, "ebba@example.com", passwordHash, createdAt]
+  );
+
+  for (const seed of seedSpots) {
+    const id = randomUUID();
+    await pool.query(
+      `
+        INSERT INTO spots (
+          id,
+          user_id,
+          title,
+          note,
+          latitude,
+          longitude,
+          favorited,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, NULL)
+      `,
+      [
+        id,
+        userId,
+        seed.title,
+        seed.note,
+        seed.latitude,
+        seed.longitude,
+        seed.favorited,
+        createdAt
+      ]
+    );
+  }
 }
 
-export function createUser(email: string, password: string) {
-  ensureDefaultUser();
+export async function createUser(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
+  const existing = await getUserByEmail(normalizedEmail);
 
-  if (usersByEmail.has(normalizedEmail)) {
+  if (existing) {
     throw new Error("EMAIL_EXISTS");
   }
 
-  const user: UserRecord = {
-    id: randomUUID(),
+  const userId = randomUUID();
+  const createdAt = new Date().toISOString();
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  await pool.query(
+    `
+      INSERT INTO users (id, email, password_hash, created_at)
+      VALUES ($1, $2, $3, $4)
+    `,
+    [userId, normalizedEmail, passwordHash, createdAt]
+  );
+
+  return {
+    id: userId,
     email: normalizedEmail,
-    passwordHash: hashPassword(password),
-    createdAt: new Date().toISOString()
-  };
-
-  users.set(user.id, user);
-  usersByEmail.set(user.email, user);
-  seedSpotsForUser(user.id);
-
-  return toAuthUser(user);
+    createdAt
+  } satisfies AuthUser;
 }
 
-export function loginUser(email: string, password: string) {
-  ensureDefaultUser();
+export async function loginUser(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
-  const user = usersByEmail.get(normalizedEmail);
+  const user = await getUserByEmail(normalizedEmail);
 
-  if (!user || !passwordsMatch(password, user.passwordHash)) {
+  if (!user) {
+    throw new Error("INVALID_CREDENTIALS");
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+
+  if (!passwordMatches) {
     throw new Error("INVALID_CREDENTIALS");
   }
 
@@ -147,65 +221,112 @@ export function loginUser(email: string, password: string) {
 }
 
 export function createSession(userId: string) {
-  const session: SessionRecord = {
-    token: randomUUID(),
+  const createdAt = new Date().toISOString();
+  const token = jwt.sign({ sub: userId, createdAt }, config.jwtSecret, {
+    expiresIn: "30d"
+  });
+
+  return {
+    token,
     userId,
-    createdAt: new Date().toISOString()
+    createdAt
   };
-
-  sessions.set(session.token, session);
-
-  return session.token;
 }
 
-export function getUserByToken(token: string) {
-  ensureDefaultUser();
-  const session = sessions.get(token);
+export async function getUserByToken(token: string) {
+  try {
+    const payload = jwt.verify(token, config.jwtSecret) as { sub?: string };
 
-  if (!session) {
+    if (!payload.sub) {
+      return null;
+    }
+
+    const result = await pool.query<{
+      id: string;
+      email: string;
+      created_at: string;
+    }>(
+      `
+        SELECT id, email, created_at
+        FROM users
+        WHERE id = $1
+        LIMIT 1
+      `,
+      [payload.sub]
+    );
+
+    const row = result.rows[0];
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      email: row.email,
+      createdAt: row.created_at
+    } satisfies AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+export async function listSpots(
+  userId: string,
+  filters: { search?: string; favorited?: boolean }
+) {
+  const values: unknown[] = [userId];
+  const where = [`user_id = $1`, `deleted_at IS NULL`];
+
+  if (filters.search?.trim()) {
+    values.push(`%${filters.search.trim().toLowerCase()}%`);
+    where.push(`LOWER(title || ' ' || note) LIKE $${values.length}`);
+  }
+
+  if (typeof filters.favorited === "boolean") {
+    values.push(filters.favorited);
+    where.push(`favorited = $${values.length}`);
+  }
+
+  const result = await pool.query<SpotRow>(
+    `
+      SELECT id, user_id, title, note, latitude, longitude, favorited, created_at, updated_at, deleted_at
+      FROM spots
+      WHERE ${where.join(" AND ")}
+      ORDER BY created_at DESC
+    `,
+    values
+  );
+
+  const photosBySpot = await getSpotPhotos(result.rows.map((row: SpotRow) => row.id));
+
+  return result.rows.map((row: SpotRow) =>
+    toSpotResponse(row, photosBySpot.get(row.id) ?? [])
+  );
+}
+
+export async function getSpot(userId: string, spotId: string) {
+  const result = await pool.query<SpotRow>(
+    `
+      SELECT id, user_id, title, note, latitude, longitude, favorited, created_at, updated_at, deleted_at
+      FROM spots
+      WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+      LIMIT 1
+    `,
+    [spotId, userId]
+  );
+
+  const row = result.rows[0];
+
+  if (!row) {
     return null;
   }
 
-  const user = users.get(session.userId);
-  return user ? toAuthUser(user) : null;
+  const photosBySpot = await getSpotPhotos([row.id]);
+  return toSpotResponse(row, photosBySpot.get(row.id) ?? []);
 }
 
-export function listSpots(userId: string, filters: { search?: string; favorited?: boolean }) {
-  ensureDefaultUser();
-  const normalizedSearch = filters.search?.trim().toLowerCase();
-
-  return Array.from(spots.values())
-    .filter((spot) => spot.userId === userId && spot.deletedAt === null)
-    .filter((spot) => {
-      if (filters.favorited === undefined) {
-        return true;
-      }
-
-      return spot.favorited === filters.favorited;
-    })
-    .filter((spot) => {
-      if (!normalizedSearch) {
-        return true;
-      }
-
-      return `${spot.title} ${spot.note}`.toLowerCase().includes(normalizedSearch);
-    })
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .map(toSpotResponse);
-}
-
-export function getSpot(userId: string, spotId: string) {
-  ensureDefaultUser();
-  const spot = spots.get(spotId);
-
-  if (!spot || spot.userId !== userId || spot.deletedAt !== null) {
-    return null;
-  }
-
-  return toSpotResponse(spot);
-}
-
-export function createSpot(
+export async function createSpot(
   userId: string,
   input: {
     title: string;
@@ -216,98 +337,170 @@ export function createSpot(
     photos?: SpotPhoto[];
   }
 ) {
-  ensureDefaultUser();
-  const timestamp = new Date().toISOString();
+  const client = await pool.connect();
   const id = randomUUID();
+  const timestamp = new Date().toISOString();
 
-  const spot: SpotRecord = {
-    id,
-    userId,
-    title: input.title.trim(),
-    note: input.note?.trim() ?? "",
-    latitude: input.latitude,
-    longitude: input.longitude,
-    favorited: input.favorited ?? false,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    deletedAt: null,
-    photos: input.photos ?? []
-  };
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `
+        INSERT INTO spots (
+          id,
+          user_id,
+          title,
+          note,
+          latitude,
+          longitude,
+          favorited,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, NULL)
+      `,
+      [
+        id,
+        userId,
+        input.title.trim(),
+        input.note?.trim() ?? "",
+        input.latitude,
+        input.longitude,
+        input.favorited ?? false,
+        timestamp
+      ]
+    );
 
-  spots.set(id, spot);
+    for (const photo of input.photos ?? []) {
+      await client.query(
+        `
+          INSERT INTO spot_photos (id, spot_id, storage_key, image_url, created_at)
+          VALUES ($1, $2, $3, $4, $5)
+        `,
+        [
+          photo.id || randomUUID(),
+          id,
+          photo.storageKey,
+          photo.imageUrl,
+          photo.createdAt || timestamp
+        ]
+      );
+    }
 
-  return toSpotResponse(spot);
-}
-
-export function updateSpot(
-  userId: string,
-  spotId: string,
-  input: Partial<Pick<SpotRecord, "title" | "note" | "favorited" | "latitude" | "longitude">>
-) {
-  ensureDefaultUser();
-  const spot = spots.get(spotId);
-
-  if (!spot || spot.userId !== userId || spot.deletedAt !== null) {
-    return null;
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
   }
 
+  const created = await getSpot(userId, id);
+
+  if (!created) {
+    throw new Error("SPOT_CREATE_FAILED");
+  }
+
+  return created;
+}
+
+export async function updateSpot(
+  userId: string,
+  spotId: string,
+  input: Partial<Pick<SpotResponse, "title" | "note" | "favorited" | "latitude" | "longitude">>
+) {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+
   if (typeof input.title === "string") {
-    spot.title = input.title.trim();
+    values.push(input.title.trim());
+    fields.push(`title = $${values.length}`);
   }
 
   if (typeof input.note === "string") {
-    spot.note = input.note.trim();
+    values.push(input.note.trim());
+    fields.push(`note = $${values.length}`);
   }
 
   if (typeof input.favorited === "boolean") {
-    spot.favorited = input.favorited;
+    values.push(input.favorited);
+    fields.push(`favorited = $${values.length}`);
   }
 
   if (typeof input.latitude === "number") {
-    spot.latitude = input.latitude;
+    values.push(input.latitude);
+    fields.push(`latitude = $${values.length}`);
   }
 
   if (typeof input.longitude === "number") {
-    spot.longitude = input.longitude;
+    values.push(input.longitude);
+    fields.push(`longitude = $${values.length}`);
   }
 
-  spot.updatedAt = new Date().toISOString();
+  if (fields.length === 0) {
+    return getSpot(userId, spotId);
+  }
 
-  return toSpotResponse(spot);
+  values.push(new Date().toISOString());
+  fields.push(`updated_at = $${values.length}`);
+  values.push(spotId);
+  values.push(userId);
+
+  const result = await pool.query(
+    `
+      UPDATE spots
+      SET ${fields.join(", ")}
+      WHERE id = $${values.length - 1} AND user_id = $${values.length} AND deleted_at IS NULL
+    `,
+    values
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  return getSpot(userId, spotId);
 }
 
-export function softDeleteSpot(userId: string, spotId: string) {
-  ensureDefaultUser();
-  const spot = spots.get(spotId);
+export async function softDeleteSpot(userId: string, spotId: string) {
+  const result = await pool.query(
+    `
+      UPDATE spots
+      SET deleted_at = $1, updated_at = $1
+      WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL
+    `,
+    [new Date().toISOString(), spotId, userId]
+  );
 
-  if (!spot || spot.userId !== userId || spot.deletedAt !== null) {
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function removeSpotPhoto(userId: string, spotId: string, photoId: string) {
+  const result = await pool.query<{
+    storage_key: string;
+  }>(
+    `
+      DELETE FROM spot_photos
+      WHERE id = $1
+        AND spot_id = $2
+        AND EXISTS (
+          SELECT 1
+          FROM spots
+          WHERE spots.id = $2
+            AND spots.user_id = $3
+            AND spots.deleted_at IS NULL
+        )
+      RETURNING storage_key
+    `,
+    [photoId, spotId, userId]
+  );
+
+  const row = result.rows[0];
+
+  if (!row) {
     return false;
   }
 
-  spot.deletedAt = new Date().toISOString();
-  spot.updatedAt = spot.deletedAt;
-
+  await removeImage(row.storage_key);
   return true;
-}
-
-function toAuthUser(user: UserRecord): AuthUser {
-  return {
-    id: user.id,
-    email: user.email,
-    createdAt: user.createdAt
-  };
-}
-
-function toSpotResponse(spot: SpotRecord): SpotResponse {
-  return {
-    id: spot.id,
-    title: spot.title,
-    note: spot.note,
-    latitude: spot.latitude,
-    longitude: spot.longitude,
-    favorited: spot.favorited,
-    createdAt: spot.createdAt,
-    updatedAt: spot.updatedAt,
-    photos: spot.photos
-  };
 }

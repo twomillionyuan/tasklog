@@ -1,8 +1,22 @@
 import { createApp } from "./app.js";
+import { config } from "./config.js";
+import { migrateDatabase } from "./db.js";
+import { ensureStorageBucket } from "./storage.js";
+import { initializeStore } from "./store.js";
 
-const port = Number(process.env.PORT) || 8080;
-const app = createApp();
+async function startServer() {
+  await migrateDatabase();
+  await ensureStorageBucket();
+  await initializeStore();
 
-app.listen(port, "0.0.0.0", () => {
-  console.log(`SpotLog API listening on port ${port}`);
+  const app = createApp();
+
+  app.listen(config.port, "0.0.0.0", () => {
+    console.log(`SpotLog API listening on port ${config.port}`);
+  });
+}
+
+startServer().catch((error) => {
+  console.error("Failed to start SpotLog API", error);
+  process.exit(1);
 });

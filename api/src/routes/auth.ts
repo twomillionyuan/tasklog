@@ -4,7 +4,7 @@ import { createSession, createUser, loginUser } from "../store.js";
 
 export const authRouter = Router();
 
-authRouter.post("/register", (req, res) => {
+authRouter.post("/register", async (req, res) => {
   const email = req.body?.email;
   const password = req.body?.password;
 
@@ -21,11 +21,11 @@ authRouter.post("/register", (req, res) => {
   }
 
   try {
-    const user = createUser(email, password);
-    const token = createSession(user.id);
+    const user = await createUser(email, password);
+    const session = createSession(user.id);
 
     return res.status(201).json({
-      token,
+      token: session.token,
       user
     });
   } catch (error) {
@@ -41,7 +41,7 @@ authRouter.post("/register", (req, res) => {
   }
 });
 
-authRouter.post("/login", (req, res) => {
+authRouter.post("/login", async (req, res) => {
   const email = req.body?.email;
   const password = req.body?.password;
 
@@ -52,11 +52,11 @@ authRouter.post("/login", (req, res) => {
   }
 
   try {
-    const user = loginUser(email, password);
-    const token = createSession(user.id);
+    const user = await loginUser(email, password);
+    const session = createSession(user.id);
 
     return res.status(200).json({
-      token,
+      token: session.token,
       user
     });
   } catch (error) {

@@ -1,5 +1,5 @@
 import { Link } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { formatSpotDate } from "@/src/lib/format";
 import { theme } from "@/src/theme/tokens";
@@ -9,12 +9,16 @@ export function SpotCard({ spot }: { spot: Spot & { accentColor?: string } }) {
   return (
     <Link href={`/spot/${spot.id}` as const} asChild>
       <Pressable style={styles.card}>
-        <View
-          style={[
-            styles.image,
-            { backgroundColor: spot.accentColor ?? theme.colors.surfaceMuted }
-          ]}
-        />
+        {spot.photos[0] ? (
+          <Image source={{ uri: spot.photos[0].imageUrl }} style={styles.image} />
+        ) : (
+          <View
+            style={[
+              styles.image,
+              { backgroundColor: spot.accentColor ?? theme.colors.surfaceMuted }
+            ]}
+          />
+        )}
         <View style={styles.content}>
           <View style={styles.row}>
             <Text style={styles.title}>{spot.title}</Text>

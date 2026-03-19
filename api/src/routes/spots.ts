@@ -1,21 +1,28 @@
 import { Router } from "express";
 
 import { requireAuth } from "../middleware/auth.js";
-import { createSpot, getSpot, listSpots, softDeleteSpot, updateSpot } from "../store.js";
+import {
+  createSpot,
+  getSpot,
+  listSpots,
+  removeSpotPhoto,
+  softDeleteSpot,
+  updateSpot
+} from "../store.js";
 import type { SpotPhoto } from "../types.js";
 
 export const spotsRouter = Router();
 
 spotsRouter.use(requireAuth);
 
-spotsRouter.get("/", (req, res) => {
+spotsRouter.get("/", async (req, res) => {
   const search = typeof req.query.search === "string" ? req.query.search : undefined;
   const favorited =
     typeof req.query.favorited === "string"
       ? req.query.favorited === "true"
       : undefined;
 
-  const data = listSpots(req.authUser!.id, {
+  const data = await listSpots(req.authUser!.id, {
     search,
     favorited
   });
@@ -25,7 +32,7 @@ spotsRouter.get("/", (req, res) => {
   });
 });
 
-spotsRouter.post("/", (req, res) => {
+spotsRouter.post("/", async (req, res) => {
   const title = req.body?.title;
   const latitude = Number(req.body?.latitude);
   const longitude = Number(req.body?.longitude);
@@ -45,7 +52,7 @@ spotsRouter.post("/", (req, res) => {
     });
   }
 
-  const spot = createSpot(req.authUser!.id, {
+  const spot = await createSpot(req.authUser!.id, {
     title,
     note,
     latitude,
@@ -57,8 +64,8 @@ spotsRouter.post("/", (req, res) => {
   return res.status(201).json(spot);
 });
 
-spotsRouter.get("/:id", (req, res) => {
-  const spot = getSpot(req.authUser!.id, req.params.id);
+spotsRouter.get("/:id", async (req, res) => {
+  const spot = await getSpot(req.authUser!.id, req.params.id);
 
   if (!spot) {
     return res.status(404).json({
@@ -69,7 +76,7 @@ spotsRouter.get("/:id", (req, res) => {
   return res.status(200).json(spot);
 });
 
-spotsRouter.patch("/:id", (req, res) => {
+spotsRouter.patch("/:id", async (req, res) => {
   const updates = {
     title: typeof req.body?.title === "string" ? req.body.title : undefined,
     note: typeof req.body?.note === "string" ? req.body.note : undefined,
@@ -87,7 +94,7 @@ spotsRouter.patch("/:id", (req, res) => {
     });
   }
 
-  const spot = updateSpot(req.authUser!.id, req.params.id, updates);
+  const spot = await updateSpot(req.authUser!.id, req.params.id, updates);
 
   if (!spot) {
     return res.status(404).json({
@@ -98,12 +105,28 @@ spotsRouter.patch("/:id", (req, res) => {
   return res.status(200).json(spot);
 });
 
-spotsRouter.delete("/:id", (req, res) => {
-  const deleted = softDeleteSpot(req.authUser!.id, req.params.id);
+spotsRouter.delete("/:id", async (req, res) => {
+  const deleted = await softDeleteSpot(req.authUser!.id, req.params.id);
 
   if (!deleted) {
     return res.status(404).json({
       error: "Spot not found"
+    });
+  }
+
+  return res.status(204).send();
+});
+
+spotsRouter.delete("/:id/photos/:photoId", async (req, res) => {
+  const deleted = await removeSpotPhoto(
+    req.authUser!.id,
+    req.params.id,
+    req.params.photoId
+  );
+
+  if (!deleted) {
+    return res.status(404).json({
+      error: "Photo not found"
     });
   }
 

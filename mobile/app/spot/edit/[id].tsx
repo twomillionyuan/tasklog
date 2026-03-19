@@ -79,7 +79,7 @@ export default function EditSpotScreen() {
           <View style={styles.header}>
             <Text style={styles.title}>Update this memory</Text>
             <Text style={styles.subtitle}>
-              Edit title and note now. Photos and location adjustments come later.
+              Edit title and note. Uploaded photos stay attached to the spot.
             </Text>
           </View>
 
@@ -107,11 +107,6 @@ export default function EditSpotScreen() {
             style={[styles.input, styles.noteInput]}
             value={note}
           />
-
-          <View style={styles.photoRow}>
-            <View style={[styles.photo, { backgroundColor: "#C8D5C2" }]} />
-            <View style={[styles.photo, { backgroundColor: "#D7C9B8" }]} />
-          </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -170,15 +165,6 @@ const styles = StyleSheet.create({
     minHeight: 140,
     paddingTop: 16,
     textAlignVertical: "top"
-  },
-  photoRow: {
-    flexDirection: "row",
-    gap: 12
-  },
-  photo: {
-    borderRadius: 22,
-    flex: 1,
-    height: 140
   },
   button: {
     alignItems: "center",

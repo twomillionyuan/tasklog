@@ -1,5 +1,5 @@
 import { apiUrl } from "./config";
-import type { AuthResponse, Spot } from "../types/api";
+import type { AuthResponse, Spot, SpotPhoto } from "../types/api";
 
 type ApiOptions = {
   token?: string | null;
@@ -108,4 +108,36 @@ export function deleteSpot(token: string, spotId: string) {
     token,
     method: "DELETE"
   });
+}
+
+export async function uploadPhoto(
+  token: string,
+  asset: {
+    uri: string;
+    name: string;
+    type: string;
+  }
+) {
+  const formData = new FormData();
+  formData.append("file", {
+    uri: asset.uri,
+    name: asset.name,
+    type: asset.type
+  } as never);
+
+  const response = await fetch(`${apiUrl}/api/uploads`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: formData
+  });
+
+  const payload = (await response.json()) as SpotPhoto & { error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Upload failed");
+  }
+
+  return payload;
 }
