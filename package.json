@@ -1,0 +1,14 @@
+{
+  "name": "spotlog",
+  "private": true,
+  "workspaces": [
+    "api"
+  ],
+  "scripts": {
+    "build": "npm --workspace api run build",
+    "start": "npm --workspace api run start"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

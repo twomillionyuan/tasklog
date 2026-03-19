@@ -1,8 +1,9 @@
 import cors from "cors";
 import express from "express";
 
+import { authRouter } from "./routes/auth.js";
 import { healthRouter } from "./routes/health.js";
-import { itemsRouter } from "./routes/items.js";
+import { spotsRouter } from "./routes/spots.js";
 
 export function createApp() {
   const app = express();
@@ -15,7 +16,8 @@ export function createApp() {
   app.use(express.json({ limit: "10mb" }));
 
   app.use("/health", healthRouter);
-  app.use("/api/items", itemsRouter);
+  app.use("/auth", authRouter);
+  app.use("/api/spots", spotsRouter);
 
   app.use((req, res) => {
     res.status(404).json({
