@@ -39,7 +39,7 @@ export default function LoginScreen() {
         <Text style={styles.kicker}>Sign In</Text>
         <Text style={styles.title}>Welcome back.</Text>
         <Text style={styles.subtitle}>
-          This screen is scaffolded for the real API-based login flow in Phase 7.
+          Sign in against the OSC-hosted SpotLog API.
         </Text>
 
         <View style={styles.form}>

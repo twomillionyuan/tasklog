@@ -22,5 +22,9 @@ export const config = {
   s3SecretAccessKey: requireEnv("S3_SECRET_ACCESS_KEY"),
   s3BucketName: requireEnv("S3_BUCKET_NAME"),
   s3Region: readEnv("S3_REGION") ?? "us-east-1",
-  appUrl: readEnv("APP_URL")
+  appUrl: readEnv("APP_URL"),
+  couchDbUrl: readEnv("COUCHDB_URL"),
+  couchDbUser: readEnv("COUCHDB_USER"),
+  couchDbPassword: readEnv("COUCHDB_PASSWORD"),
+  couchDbDatabase: readEnv("COUCHDB_DATABASE")
 };

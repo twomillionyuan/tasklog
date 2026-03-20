@@ -1,7 +1,14 @@
 import MapView, { Marker } from "react-native-maps";
 import { Link } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View
+} from "react-native";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/src/context/AuthContext";
@@ -10,10 +17,12 @@ import { theme } from "@/src/theme/tokens";
 import type { Spot } from "@/src/types/api";
 
 export default function MapScreen() {
+  const syncIntervalMs = 10000;
   const { token } = useAuth();
   const [spots, setSpots] = useState<Spot[]>([]);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -27,12 +36,42 @@ export default function MapScreen() {
         const loadedSpots = await getSpots(token);
         setSpots(loadedSpots);
         setSelectedSpot(loadedSpots[0] ?? null);
+        setError(null);
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error ? requestError.message : "Could not load map data"
+        );
       } finally {
         setLoading(false);
       }
     }
 
     load();
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      void (async () => {
+        try {
+          const loadedSpots = await getSpots(token);
+          setSpots(loadedSpots);
+          setSelectedSpot((current) =>
+            loadedSpots.find((spot) => spot.id === current?.id) ?? loadedSpots[0] ?? null
+          );
+          setError(null);
+        } catch (requestError) {
+          setError(
+            requestError instanceof Error ? requestError.message : "Could not refresh map data"
+          );
+        }
+      })();
+    }, syncIntervalMs);
+
+    return () => clearInterval(interval);
   }, [token]);
 
   const initialSpot = selectedSpot ?? spots[0];
@@ -50,6 +89,11 @@ export default function MapScreen() {
             <View style={styles.mapOverlay}>
               <ActivityIndicator color={theme.colors.accent} />
               <Text style={styles.mapOverlayBody}>Loading your saved places...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.mapOverlay}>
+              <Text style={styles.mapOverlayTitle}>Could not load map</Text>
+              <Text style={styles.mapOverlayBody}>{error}</Text>
             </View>
           ) : initialSpot ? (
             <MapView
@@ -86,9 +130,16 @@ export default function MapScreen() {
 
         {selectedSpot ? (
           <View style={styles.previewCard}>
+            {selectedSpot.photos[0] ? (
+              <Image
+                source={{ uri: selectedSpot.photos[0].imageUrl }}
+                style={styles.previewImage}
+              />
+            ) : null}
             <Text style={styles.previewLabel}>Selected pin</Text>
             <Text style={styles.previewTitle}>{selectedSpot.title}</Text>
             <Text style={styles.previewBody}>{selectedSpot.note}</Text>
+            <Text style={styles.previewMeta}>Auto-sync checks every 10 seconds.</Text>
             <Link href={`/spot/${selectedSpot.id}` as const} asChild>
               <Pressable style={styles.previewButton}>
                 <Text style={styles.previewButtonLabel}>Open detail</Text>
@@ -163,6 +214,12 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 18
   },
+  previewImage: {
+    borderRadius: 18,
+    height: 136,
+    marginBottom: 4,
+    width: "100%"
+  },
   previewLabel: {
     color: theme.colors.mutedText,
     fontSize: 12,
@@ -179,6 +236,11 @@ const styles = StyleSheet.create({
     color: theme.colors.subtleText,
     fontSize: 14,
     lineHeight: 20
+  },
+  previewMeta: {
+    color: theme.colors.mutedText,
+    fontSize: 12,
+    fontWeight: "600"
   },
   previewButton: {
     alignSelf: "flex-start",

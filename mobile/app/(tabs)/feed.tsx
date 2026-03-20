@@ -18,6 +18,7 @@ import { theme } from "@/src/theme/tokens";
 import type { Spot } from "@/src/types/api";
 
 export default function FeedScreen() {
+  const syncIntervalMs = 10000;
   const { token } = useAuth();
   const [spots, setSpots] = useState<Spot[]>([]);
   const [search, setSearch] = useState("");
@@ -62,6 +63,18 @@ export default function FeedScreen() {
     loadSpots();
   }, [token, deferredSearch, favoritedOnly]);
 
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      void loadSpots();
+    }, syncIntervalMs);
+
+    return () => clearInterval(interval);
+  }, [token, deferredSearch, favoritedOnly]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -74,7 +87,8 @@ export default function FeedScreen() {
           <Text style={styles.kicker}>Your Journal</Text>
           <Text style={styles.title}>Recent spots</Text>
           <Text style={styles.subtitle}>
-            Scrollable feed, newest first, with search and quick filters.
+            Scrollable feed, newest first, with search, quick filters, and
+            automatic sync every 10 seconds.
           </Text>
         </View>
 

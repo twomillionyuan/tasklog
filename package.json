@@ -6,7 +6,8 @@
   ],
   "scripts": {
     "build": "npm --workspace api run build",
-    "start": "npm --workspace api run start"
+    "start": "npm --workspace api run start",
+    "load:test": "node scripts/load-test.mjs"
   },
   "engines": {
     "node": ">=20"

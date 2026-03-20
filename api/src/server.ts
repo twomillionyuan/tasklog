@@ -1,3 +1,4 @@
+import { ensureActivityStore } from "./activity.js";
 import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { migrateDatabase } from "./db.js";
@@ -9,6 +10,8 @@ async function startServer() {
   await migrateDatabase();
   console.log("SpotLog startup: ensuring storage bucket");
   await ensureStorageBucket();
+  console.log("SpotLog startup: ensuring activity store");
+  await ensureActivityStore();
   console.log("SpotLog startup: initializing seed data");
   await initializeStore();
   console.log("SpotLog startup: creating express app");

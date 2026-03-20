@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
+import { recordSpotActivity } from "./activity.js";
 import { config } from "./config.js";
 import { pool } from "./db.js";
 import { removeImage } from "./storage.js";
@@ -401,6 +402,13 @@ export async function createSpot(
     throw new Error("SPOT_CREATE_FAILED");
   }
 
+  await recordSpotActivity({
+    userId,
+    spotId: created.id,
+    title: created.title,
+    type: "created"
+  });
+
   return created;
 }
 
@@ -459,20 +467,48 @@ export async function updateSpot(
     return null;
   }
 
-  return getSpot(userId, spotId);
+  const updated = await getSpot(userId, spotId);
+
+  if (updated) {
+    await recordSpotActivity({
+      userId,
+      spotId: updated.id,
+      title: updated.title,
+      type: "updated"
+    });
+  }
+
+  return updated;
 }
 
 export async function softDeleteSpot(userId: string, spotId: string) {
-  const result = await pool.query(
+  const result = await pool.query<{
+    id: string;
+    title: string;
+  }>(
     `
       UPDATE spots
       SET deleted_at = $1, updated_at = $1
       WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL
+      RETURNING id, title
     `,
     [new Date().toISOString(), spotId, userId]
   );
 
-  return (result.rowCount ?? 0) > 0;
+  const deleted = result.rows[0];
+
+  if (!deleted) {
+    return false;
+  }
+
+  await recordSpotActivity({
+    userId,
+    spotId: deleted.id,
+    title: deleted.title,
+    type: "deleted"
+  });
+
+  return true;
 }
 
 export async function removeSpotPhoto(userId: string, spotId: string, photoId: string) {

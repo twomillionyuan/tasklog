@@ -45,8 +45,7 @@ export default function RegisterScreen() {
         <Text style={styles.kicker}>Create Account</Text>
         <Text style={styles.title}>Start your own map of memories.</Text>
         <Text style={styles.subtitle}>
-          Registration will connect to the OSC-hosted auth API once the backend
-          flow is built.
+          Create an account against the OSC-hosted auth API and keep your spots private.
         </Text>
 
         <View style={styles.form}>

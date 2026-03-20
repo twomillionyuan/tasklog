@@ -55,3 +55,12 @@ export type SpotRow = {
   updated_at: string;
   deleted_at: string | null;
 };
+
+export type ActivityEvent = {
+  id: string;
+  userId: string;
+  spotId: string;
+  title: string;
+  type: "created" | "updated" | "deleted";
+  createdAt: string;
+};

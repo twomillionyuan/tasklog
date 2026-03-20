@@ -1,5 +1,5 @@
 import { apiUrl } from "./config";
-import type { AuthResponse, Spot, SpotPhoto } from "../types/api";
+import type { ActivityEvent, AuthResponse, Spot, SpotPhoto } from "../types/api";
 
 type ApiOptions = {
   token?: string | null;
@@ -140,4 +140,12 @@ export async function uploadPhoto(
   }
 
   return payload;
+}
+
+export async function getActivity(token: string) {
+  const response = await request<{ activity: ActivityEvent[] }>("/api/activity", {
+    token
+  });
+
+  return response.activity;
 }

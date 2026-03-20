@@ -27,3 +27,12 @@ export type Spot = {
   updatedAt: string;
   photos: SpotPhoto[];
 };
+
+export type ActivityEvent = {
+  id: string;
+  userId: string;
+  spotId: string;
+  title: string;
+  type: "created" | "updated" | "deleted";
+  createdAt: string;
+};

@@ -1,11 +1,47 @@
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
 
 import { useAuth } from "@/src/context/AuthContext";
+import { getActivity } from "@/src/lib/api";
+import { formatSpotDate } from "@/src/lib/format";
 import { theme } from "@/src/theme/tokens";
+import type { ActivityEvent } from "@/src/types/api";
 
 export default function ProfileScreen() {
-  const { signOut, user } = useAuth();
+  const { signOut, token, user } = useAuth();
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [activityError, setActivityError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    const authToken = token;
+
+    async function loadActivity() {
+      try {
+        const response = await getActivity(authToken);
+        setActivity(response);
+        setActivityError(null);
+      } catch (requestError) {
+        setActivityError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Could not load sync activity"
+        );
+      }
+    }
+
+    void loadActivity();
+
+    const interval = setInterval(() => {
+      void loadActivity();
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [token]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -24,6 +60,23 @@ export default function ProfileScreen() {
           <Text style={styles.item}>Spots sync against the OSC-hosted API</Text>
           <Text style={styles.item}>Photos upload into OSC object storage</Text>
           <Text style={styles.item}>Location capture uses the current GPS position</Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Sync activity</Text>
+          <Text style={styles.item}>
+            Recent spot events are mirrored into OSC CouchDB for sync-friendly activity logs.
+          </Text>
+          {activityError ? <Text style={styles.item}>{activityError}</Text> : null}
+          {activity.length === 0 ? (
+            <Text style={styles.item}>No activity recorded yet.</Text>
+          ) : (
+            activity.slice(0, 5).map((entry) => (
+              <Text key={entry.id} style={styles.item}>
+                {entry.type.toUpperCase()} {entry.title} • {formatSpotDate(entry.createdAt)}
+              </Text>
+            ))
+          )}
         </View>
 
         <Pressable
