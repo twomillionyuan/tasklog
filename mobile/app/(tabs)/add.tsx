@@ -1,5 +1,6 @@
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
+import Constants from "expo-constants";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -24,6 +25,7 @@ type PendingPhoto = SpotPhoto & {
 };
 
 export default function AddSpotScreen() {
+  const isSimulator = !Constants.isDevice;
   const { token } = useAuth();
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
@@ -101,21 +103,38 @@ export default function AddSpotScreen() {
   }
 
   async function handleOpenCamera() {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-
-    if (!permission.granted) {
-      setError("Camera access was denied. You can still choose from the gallery.");
+    if (isSimulator) {
+      setError("Take photo is not available in iOS Simulator. Use Choose photos instead.");
       return;
     }
 
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: false,
-      mediaTypes: ["images"],
-      quality: 0.8
-    });
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
 
-    if (!result.canceled) {
-      await uploadAssets(result.assets);
+      if (!permission.granted) {
+        setError("Camera access was denied. You can still choose from the gallery.");
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: false,
+        mediaTypes: ["images"],
+        quality: 0.8
+      });
+
+      if (!result.canceled) {
+        await uploadAssets(result.assets);
+      }
+    } catch (requestError) {
+      const message =
+        requestError instanceof Error ? requestError.message : "Camera is unavailable.";
+
+      if (message.toLowerCase().includes("camera not available on simulator")) {
+        setError("Camera is not available in iOS Simulator. Use Choose photos instead.");
+        return;
+      }
+
+      setError(message);
     }
   }
 
@@ -181,94 +200,108 @@ export default function AddSpotScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.kicker}>New Spot</Text>
-          <Text style={styles.title}>Capture the moment while you are there.</Text>
-        </View>
-
-        <View style={styles.uploadRow}>
-          <Pressable onPress={handleOpenCamera} style={styles.uploadCard}>
-            <Text style={styles.uploadCardTitle}>Take photo</Text>
-            <Text style={styles.uploadCardText}>Open camera and upload</Text>
-          </Pressable>
-          <Pressable onPress={handleOpenLibrary} style={styles.uploadCard}>
-            <Text style={styles.uploadCardTitle}>Choose photos</Text>
-            <Text style={styles.uploadCardText}>From gallery, immediately uploaded</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.photoStrip}>
-          {photos.length > 0 ? (
-            photos.map((photo) => (
-              <Image
-                key={photo.id}
-                source={{ uri: photo.localUri }}
-                style={styles.photoPreview}
-              />
-            ))
-          ) : (
-            <>
-              <View style={[styles.photoPreview, { backgroundColor: "#C8D5C2" }]} />
-              <View style={[styles.photoPreview, { backgroundColor: "#D7C9B8" }]} />
-              <View style={[styles.photoPreview, { backgroundColor: "#A4B9B0" }]} />
-            </>
-          )}
-        </View>
-
-        {photoBusy ? (
-          <View style={styles.inlineState}>
-            <ActivityIndicator color={theme.colors.accent} />
-            <Text style={styles.inlineStateText}>Uploading images...</Text>
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.kicker}>New Spot</Text>
+            <Text style={styles.title}>Capture the moment while you are there.</Text>
           </View>
-        ) : null}
 
-        <View style={styles.form}>
-          <TextInput
-            onChangeText={setTitle}
-            placeholder="Title"
-            placeholderTextColor={theme.colors.mutedText}
-            style={styles.input}
-            value={title}
-          />
-          <TextInput
-            multiline
-            numberOfLines={5}
-            onChangeText={setNote}
-            placeholder="Short note"
-            placeholderTextColor={theme.colors.mutedText}
-            style={[styles.input, styles.noteInput]}
-            value={note}
-          />
+          <View style={styles.uploadRow}>
+            <Pressable
+              disabled={isSimulator}
+              onPress={handleOpenCamera}
+              style={[styles.uploadCard, isSimulator && styles.uploadCardDisabled]}
+            >
+              <Text style={styles.uploadCardTitle}>
+                {isSimulator ? "Take photo unavailable" : "Take photo"}
+              </Text>
+              <Text style={styles.uploadCardText}>
+                {isSimulator
+                  ? "Camera does not exist in Simulator"
+                  : "Open camera and upload"}
+              </Text>
+            </Pressable>
+            <Pressable onPress={handleOpenLibrary} style={styles.uploadCard}>
+              <Text style={styles.uploadCardTitle}>Choose photos</Text>
+              <Text style={styles.uploadCardText}>From gallery, immediately uploaded</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.photoStrip}>
+            {photos.length > 0 ? (
+              photos.map((photo) => (
+                <Image
+                  key={photo.id}
+                  source={{ uri: photo.localUri }}
+                  style={styles.photoPreview}
+                />
+              ))
+            ) : (
+              <>
+                <View style={[styles.photoPreview, { backgroundColor: "#C8D5C2" }]} />
+                <View style={[styles.photoPreview, { backgroundColor: "#D7C9B8" }]} />
+                <View style={[styles.photoPreview, { backgroundColor: "#A4B9B0" }]} />
+              </>
+            )}
+          </View>
+
+          {photoBusy ? (
+            <View style={styles.inlineState}>
+              <ActivityIndicator color={theme.colors.accent} />
+              <Text style={styles.inlineStateText}>Uploading images...</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.form}>
+            <TextInput
+              onChangeText={setTitle}
+              placeholder="Title"
+              placeholderTextColor={theme.colors.mutedText}
+              style={styles.input}
+              value={title}
+            />
+            <TextInput
+              multiline
+              numberOfLines={5}
+              onChangeText={setNote}
+              placeholder="Short note"
+              placeholderTextColor={theme.colors.mutedText}
+              style={[styles.input, styles.noteInput]}
+              value={note}
+            />
+          </View>
+
+          <View style={styles.locationCard}>
+            <Text style={styles.locationLabel}>Current location</Text>
+            <Text style={styles.locationValue}>
+              {location
+                ? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
+                : "Locating..."}
+            </Text>
+            <Text style={styles.locationHint}>
+              Current GPS only. If permission is denied, saving is blocked until
+              location access is granted.
+            </Text>
+          </View>
+
+          {locationError ? <Text style={styles.error}>{locationError}</Text> : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+        </ScrollView>
+
+        <View style={styles.footer}>
+          <Pressable
+            disabled={saving || photoBusy}
+            onPress={handleSave}
+            style={[styles.saveButton, (saving || photoBusy) && styles.buttonDisabled]}
+          >
+            {saving ? <ActivityIndicator color={theme.colors.background} /> : null}
+            <Text style={styles.saveButtonLabel}>
+              {saving ? "Saving..." : "Save Spot"}
+            </Text>
+          </Pressable>
         </View>
-
-        <View style={styles.locationCard}>
-          <Text style={styles.locationLabel}>Current location</Text>
-          <Text style={styles.locationValue}>
-            {location
-              ? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
-              : "Locating..."}
-          </Text>
-          <Text style={styles.locationHint}>
-            Current GPS only. If permission is denied, saving is blocked until
-            location access is granted.
-          </Text>
-        </View>
-
-        {locationError ? <Text style={styles.error}>{locationError}</Text> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Pressable
-          disabled={saving || photoBusy}
-          onPress={handleSave}
-          style={[styles.saveButton, saving && styles.buttonDisabled]}
-        >
-          {saving ? <ActivityIndicator color={theme.colors.background} /> : null}
-          <Text style={styles.saveButtonLabel}>
-            {saving ? "Saving..." : "Save Spot"}
-          </Text>
-        </Pressable>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -278,8 +311,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background
   },
+  container: {
+    flex: 1
+  },
   content: {
-    paddingBottom: 32,
+    paddingBottom: 24,
     paddingHorizontal: 20,
     gap: 18
   },
@@ -311,6 +347,9 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 112,
     padding: 18
+  },
+  uploadCardDisabled: {
+    opacity: 0.55
   },
   uploadCardTitle: {
     color: theme.colors.text,
@@ -397,6 +436,14 @@ const styles = StyleSheet.create({
   inlineStateText: {
     color: theme.colors.subtleText,
     fontSize: 14
+  },
+  footer: {
+    backgroundColor: theme.colors.background,
+    borderTopColor: theme.colors.border,
+    borderTopWidth: 1,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    paddingTop: 12
   },
   buttonDisabled: {
     opacity: 0.7
