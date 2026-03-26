@@ -62,33 +62,33 @@ export default function TabLayout() {
       <Tabs.Screen
         name="feed"
         options={{
-          title: "Feed",
+          title: "Overview",
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{
-                ios: "rectangle.stack.fill",
-                android: "list_alt",
-                web: "article"
+                ios: "square.grid.2x2.fill",
+                android: "dashboard",
+                web: "dashboard"
               }}
-              tintColor={color}
               size={28}
+              tintColor={color}
             />
           )
         }}
       />
       <Tabs.Screen
-        name="map"
+        name="lists"
         options={{
-          title: "Map",
+          title: "Lists",
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{
-                ios: "map",
-                android: "map",
-                web: "map"
+                ios: "list.bullet.rectangle.fill",
+                android: "view_list",
+                web: "view_list"
               }}
-              tintColor={color}
               size={28}
+              tintColor={color}
             />
           )
         }}
@@ -104,8 +104,8 @@ export default function TabLayout() {
                 android: "add_box",
                 web: "add"
               }}
-              tintColor={color}
               size={28}
+              tintColor={color}
             />
           )
         }}
@@ -121,8 +121,8 @@ export default function TabLayout() {
                 android: "account_circle",
                 web: "account_circle"
               }}
-              tintColor={color}
               size={28}
+              tintColor={color}
             />
           )
         }}

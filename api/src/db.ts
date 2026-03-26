@@ -18,14 +18,27 @@ export async function migrateDatabase() {
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS spots (
+    CREATE TABLE IF NOT EXISTS task_lists (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      color TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      archived_at TIMESTAMPTZ
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      list_id TEXT NOT NULL REFERENCES task_lists(id) ON DELETE CASCADE,
       title TEXT NOT NULL,
-      note TEXT NOT NULL DEFAULT '',
-      latitude DOUBLE PRECISION NOT NULL,
-      longitude DOUBLE PRECISION NOT NULL,
-      favorited BOOLEAN NOT NULL DEFAULT FALSE,
+      notes TEXT NOT NULL DEFAULT '',
+      urgency TEXT NOT NULL CHECK (urgency IN ('low', 'medium', 'high', 'critical')),
+      due_date TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL,
       deleted_at TIMESTAMPTZ
@@ -33,22 +46,17 @@ export async function migrateDatabase() {
   `);
 
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS spot_photos (
-      id TEXT PRIMARY KEY,
-      spot_id TEXT NOT NULL REFERENCES spots(id) ON DELETE CASCADE,
-      storage_key TEXT NOT NULL,
-      image_url TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL
-    );
+    CREATE INDEX IF NOT EXISTS task_lists_user_updated_idx
+    ON task_lists (user_id, updated_at DESC);
   `);
 
   await pool.query(`
-    CREATE INDEX IF NOT EXISTS spots_user_created_idx
-    ON spots (user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS tasks_user_rank_idx
+    ON tasks (user_id, deleted_at, completed_at, due_date, updated_at DESC);
   `);
 
   await pool.query(`
-    CREATE INDEX IF NOT EXISTS spot_photos_spot_idx
-    ON spot_photos (spot_id, created_at ASC);
+    CREATE INDEX IF NOT EXISTS tasks_list_rank_idx
+    ON tasks (list_id, deleted_at, completed_at, due_date, updated_at DESC);
   `);
 }

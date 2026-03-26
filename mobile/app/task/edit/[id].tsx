@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link, router } from "expo-router";
-import { useIsFocused } from "@react-navigation/native";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useLocalSearchParams, useNavigation, router } from "expo-router";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/context/AuthContext";
-import { createTask, getLists } from "@/src/lib/api";
-import { type DuePreset, dueDateFromPreset } from "@/src/lib/format";
+import { deleteTask, getLists, getTask, updateTask } from "@/src/lib/api";
+import { type DuePreset, dueDateFromPreset, formatDateTime, presetFromDueDate } from "@/src/lib/format";
 import { theme } from "@/src/theme/tokens";
-import type { TaskList, TaskUrgency } from "@/src/types/api";
+import type { Task, TaskList, TaskUrgency } from "@/src/types/api";
 
 const urgencyOptions: TaskUrgency[] = ["low", "medium", "high", "critical"];
 const dueOptions: Array<{ key: DuePreset; label: string }> = [
@@ -19,44 +18,55 @@ const dueOptions: Array<{ key: DuePreset; label: string }> = [
   { key: "next-week", label: "Next week" }
 ];
 
-export default function AddTaskScreen() {
+export default function EditTaskScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const navigation = useNavigation();
   const { token } = useAuth();
-  const isFocused = useIsFocused();
   const [lists, setLists] = useState<TaskList[]>([]);
+  const [task, setTask] = useState<Task | null>(null);
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
-  const [selectedListId, setSelectedListId] = useState<string>("");
+  const [selectedListId, setSelectedListId] = useState("");
   const [urgency, setUrgency] = useState<TaskUrgency>("medium");
-  const [duePreset, setDuePreset] = useState<DuePreset>("today");
-  const [loadingLists, setLoadingLists] = useState(true);
+  const [duePreset, setDuePreset] = useState<DuePreset>("none");
+  const [customDueDate, setCustomDueDate] = useState<string | null>(null);
+  const [completed, setCompleted] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadLists() {
-    if (!token) {
+  async function load() {
+    if (!token || !id) {
       return;
     }
 
-    setLoadingLists(true);
+    setLoading(true);
 
     try {
-      const response = await getLists(token);
-      setLists(response);
+      const [nextTask, nextLists] = await Promise.all([getTask(token, id), getLists(token)]);
 
-      if (!selectedListId && response[0]) {
-        setSelectedListId(response[0].id);
-      }
-
+      setTask(nextTask);
+      setLists(nextLists);
+      setTitle(nextTask.title);
+      setNotes(nextTask.notes);
+      setSelectedListId(nextTask.listId);
+      setUrgency(nextTask.urgency);
+      setCompleted(nextTask.completed);
+      setDuePreset(presetFromDueDate(nextTask.dueDate));
+      setCustomDueDate(nextTask.dueDate);
+      navigation.setOptions({
+        title: nextTask.title
+      });
       setError(null);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not load your lists");
+      setError(requestError instanceof Error ? requestError.message : "Could not load task");
     } finally {
-      setLoadingLists(false);
+      setLoading(false);
     }
   }
 
   async function handleSave() {
-    if (!token || title.trim().length === 0 || !selectedListId) {
+    if (!token || !id || title.trim().length === 0) {
       return;
     }
 
@@ -64,67 +74,69 @@ export default function AddTaskScreen() {
     setError(null);
 
     try {
-      const created = await createTask(token, {
+      const updated = await updateTask(token, id, {
         title,
         notes,
-        listId: selectedListId,
         urgency,
-        dueDate: dueDateFromPreset(duePreset)
+        completed,
+        listId: selectedListId,
+        dueDate: dueDateFromPreset(duePreset, customDueDate)
       });
 
-      setTitle("");
-      setNotes("");
-      router.push({
+      router.replace({
         pathname: "/list/[id]",
-        params: { id: created.listId }
+        params: { id: updated.listId }
       } as never);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not create task");
+      setError(requestError instanceof Error ? requestError.message : "Could not save task");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!token || !id) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await deleteTask(token, id);
+      router.replace("/(tabs)/lists" as never);
     } finally {
       setSaving(false);
     }
   }
 
   useEffect(() => {
-    if (!isFocused) {
-      return;
-    }
-
-    void loadLists();
-  }, [token, isFocused]);
+    void load();
+  }, [token, id]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.kicker}>New Task</Text>
-          <Text style={styles.title}>Add something worth finishing</Text>
-          <Text style={styles.subtitle}>
-            Choose the list, set the urgency, and give it a due date so the app can rank it correctly.
-          </Text>
-        </View>
-
-        {loadingLists ? <Text style={styles.helper}>Loading your lists...</Text> : null}
-
-        {!loadingLists && lists.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>You need a list first</Text>
-            <Text style={styles.emptyBody}>Create one from the Lists tab, then come back here.</Text>
-            <Link href={"/(tabs)/lists" as never} asChild>
-              <Pressable style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonLabel}>Go to lists</Text>
-              </Pressable>
-            </Link>
+        {loading ? (
+          <View style={styles.stateCard}>
+            <ActivityIndicator color={theme.colors.accent} />
+            <Text style={styles.stateText}>Loading task...</Text>
           </View>
         ) : null}
 
-        {!loadingLists && lists.length > 0 ? (
+        {!loading && error ? (
+          <View style={styles.stateCard}>
+            <Text style={styles.stateTitle}>Could not load task</Text>
+            <Text style={styles.stateText}>{error}</Text>
+          </View>
+        ) : null}
+
+        {!loading && !error && task ? (
           <>
             <View style={styles.formCard}>
               <Text style={styles.label}>Title</Text>
               <TextInput
                 onChangeText={setTitle}
-                placeholder="What needs to get done?"
+                placeholder="Task title"
                 placeholderTextColor={theme.colors.mutedText}
                 style={styles.input}
                 value={title}
@@ -134,7 +146,7 @@ export default function AddTaskScreen() {
               <TextInput
                 multiline
                 onChangeText={setNotes}
-                placeholder="Optional context"
+                placeholder="Notes"
                 placeholderTextColor={theme.colors.mutedText}
                 style={[styles.input, styles.notesInput]}
                 textAlignVertical="top"
@@ -203,21 +215,34 @@ export default function AddTaskScreen() {
                   </Pressable>
                 ))}
               </View>
+
+              <View style={styles.switchRow}>
+                <View>
+                  <Text style={styles.label}>Completed</Text>
+                  <Text style={styles.helperText}>
+                    {task.completedAt ? `Finished ${formatDateTime(task.completedAt)}` : "Still open"}
+                  </Text>
+                </View>
+                <Switch onValueChange={setCompleted} value={completed} />
+              </View>
             </View>
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
             <Pressable
-              disabled={saving || title.trim().length === 0 || !selectedListId}
+              disabled={saving || title.trim().length === 0}
               onPress={handleSave}
-              style={[
-                styles.primaryButton,
-                (saving || title.trim().length === 0 || !selectedListId) && styles.buttonDisabled
-              ]}
+              style={[styles.primaryButton, (saving || title.trim().length === 0) && styles.buttonDisabled]}
             >
-              <Text style={styles.primaryButtonLabel}>
-                {saving ? "Saving..." : "Save task"}
-              </Text>
+              <Text style={styles.primaryButtonLabel}>{saving ? "Saving..." : "Save changes"}</Text>
+            </Pressable>
+
+            <Pressable
+              disabled={saving}
+              onPress={handleDelete}
+              style={[styles.deleteButton, saving && styles.buttonDisabled]}
+            >
+              <Text style={styles.deleteButtonLabel}>Delete task</Text>
             </Pressable>
           </>
         ) : null}
@@ -234,32 +259,8 @@ const styles = StyleSheet.create({
   content: {
     gap: 18,
     paddingBottom: 32,
-    paddingHorizontal: 20
-  },
-  header: {
-    gap: 8,
-    marginTop: 8
-  },
-  kicker: {
-    color: theme.colors.accent,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 1.6,
-    textTransform: "uppercase"
-  },
-  title: {
-    color: theme.colors.text,
-    fontFamily: theme.fonts.serif,
-    fontSize: 34
-  },
-  subtitle: {
-    color: theme.colors.subtleText,
-    fontSize: 15,
-    lineHeight: 22
-  },
-  helper: {
-    color: theme.colors.subtleText,
-    fontSize: 15
+    paddingHorizontal: 20,
+    paddingTop: 12
   },
   formCard: {
     backgroundColor: theme.colors.surface,
@@ -274,6 +275,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     marginTop: 4
+  },
+  helperText: {
+    color: theme.colors.subtleText,
+    fontSize: 13,
+    lineHeight: 18
   },
   input: {
     backgroundColor: theme.colors.background,
@@ -325,6 +331,12 @@ const styles = StyleSheet.create({
   filterChipLabelActive: {
     color: theme.colors.background
   },
+  switchRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8
+  },
   primaryButton: {
     alignItems: "center",
     backgroundColor: theme.colors.text,
@@ -336,22 +348,27 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700"
   },
-  secondaryButton: {
+  deleteButton: {
     alignItems: "center",
-    backgroundColor: theme.colors.text,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12
+    backgroundColor: "#A04B41",
+    borderRadius: 18,
+    paddingVertical: 16
   },
-  secondaryButtonLabel: {
+  deleteButtonLabel: {
     color: theme.colors.background,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700"
   },
   buttonDisabled: {
     opacity: 0.6
   },
-  emptyCard: {
+  error: {
+    color: "#A04B41",
+    fontSize: 14,
+    lineHeight: 20
+  },
+  stateCard: {
+    alignItems: "center",
     backgroundColor: theme.colors.surface,
     borderColor: theme.colors.border,
     borderRadius: 24,
@@ -359,19 +376,15 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 20
   },
-  emptyTitle: {
+  stateTitle: {
     color: theme.colors.text,
     fontFamily: theme.fonts.serif,
-    fontSize: 24
+    fontSize: 22
   },
-  emptyBody: {
+  stateText: {
     color: theme.colors.subtleText,
     fontSize: 15,
-    lineHeight: 22
-  },
-  error: {
-    color: "#A04B41",
-    fontSize: 14,
-    lineHeight: 20
+    lineHeight: 22,
+    textAlign: "center"
   }
 });

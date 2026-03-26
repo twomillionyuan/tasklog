@@ -6,10 +6,7 @@ import "react-native-reanimated";
 import { AuthProvider } from "@/src/context/AuthContext";
 import { theme } from "@/src/theme/tokens";
 
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from "expo-router";
+export { ErrorBoundary } from "expo-router";
 
 export const unstable_settings = {
   initialRouteName: "(auth)"
@@ -40,7 +37,7 @@ function RootLayoutNav() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)" options={{ headerShown: false }} />
           <Stack.Screen
-            name="spot/[id]"
+            name="list/[id]"
             options={{
               headerTintColor: theme.colors.text,
               headerTitleStyle: {
@@ -49,7 +46,7 @@ function RootLayoutNav() {
             }}
           />
           <Stack.Screen
-            name="spot/edit/[id]"
+            name="task/edit/[id]"
             options={{
               headerTintColor: theme.colors.text,
               headerTitleStyle: {

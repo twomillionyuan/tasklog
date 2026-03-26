@@ -1,5 +1,5 @@
 import { apiUrl } from "./config";
-import type { ActivityEvent, AuthResponse, Spot, SpotPhoto } from "../types/api";
+import type { AuthResponse, Dashboard, Task, TaskList, TaskUrgency } from "../types/api";
 
 type ApiOptions = {
   token?: string | null;
@@ -48,104 +48,104 @@ export function login(email: string, password: string) {
   });
 }
 
-export async function getSpots(token: string, query?: { search?: string; favorited?: boolean }) {
-  const params = new URLSearchParams();
-
-  if (query?.search) {
-    params.set("search", query.search);
-  }
-
-  if (typeof query?.favorited === "boolean") {
-    params.set("favorited", String(query.favorited));
-  }
-
-  const suffix = params.toString() ? `?${params.toString()}` : "";
-  const response = await request<{ spots: Spot[] }>(`/api/spots${suffix}`, {
-    token
-  });
-
-  return response.spots;
-}
-
-export function getSpot(token: string, spotId: string) {
-  return request<Spot>(`/api/spots/${spotId}`, {
+export function getDashboard(token: string) {
+  return request<Dashboard>("/api/dashboard", {
     token
   });
 }
 
-export function createSpot(
+export async function getLists(token: string) {
+  const response = await request<{ lists: TaskList[] }>("/api/lists", {
+    token
+  });
+
+  return response.lists;
+}
+
+export function getList(token: string, listId: string) {
+  return request<TaskList>(`/api/lists/${listId}`, {
+    token
+  });
+}
+
+export function createList(
   token: string,
   payload: {
-    title: string;
-    note: string;
-    latitude: number;
-    longitude: number;
-    favorited?: boolean;
-    photos?: Spot["photos"];
+    name: string;
+    color: string;
   }
 ) {
-  return request<Spot>("/api/spots", {
+  return request<TaskList>("/api/lists", {
     token,
     method: "POST",
     body: payload
   });
 }
 
-export function updateSpot(
+export function updateList(
   token: string,
-  spotId: string,
-  payload: Partial<Pick<Spot, "title" | "note" | "favorited" | "latitude" | "longitude">>
+  listId: string,
+  payload: Partial<Pick<TaskList, "name" | "color">>
 ) {
-  return request<Spot>(`/api/spots/${spotId}`, {
+  return request<TaskList>(`/api/lists/${listId}`, {
     token,
     method: "PATCH",
     body: payload
   });
 }
 
-export function deleteSpot(token: string, spotId: string) {
-  return request<null>(`/api/spots/${spotId}`, {
+export function deleteList(token: string, listId: string) {
+  return request<null>(`/api/lists/${listId}`, {
     token,
     method: "DELETE"
   });
 }
 
-export async function uploadPhoto(
-  token: string,
-  asset: {
-    uri: string;
-    name: string;
-    type: string;
-  }
-) {
-  const formData = new FormData();
-  formData.append("file", {
-    uri: asset.uri,
-    name: asset.name,
-    type: asset.type
-  } as never);
-
-  const response = await fetch(`${apiUrl}/api/uploads`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`
-    },
-    body: formData
-  });
-
-  const payload = (await response.json()) as SpotPhoto & { error?: string };
-
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Upload failed");
-  }
-
-  return payload;
-}
-
-export async function getActivity(token: string) {
-  const response = await request<{ activity: ActivityEvent[] }>("/api/activity", {
+export function getTask(token: string, taskId: string) {
+  return request<Task>(`/api/tasks/${taskId}`, {
     token
   });
+}
 
-  return response.activity;
+export function createTask(
+  token: string,
+  payload: {
+    listId: string;
+    title: string;
+    notes: string;
+    urgency: TaskUrgency;
+    dueDate: string | null;
+  }
+) {
+  return request<Task>("/api/tasks", {
+    token,
+    method: "POST",
+    body: payload
+  });
+}
+
+export function updateTask(
+  token: string,
+  taskId: string,
+  payload: Partial<{
+    title: string;
+    notes: string;
+    urgency: TaskUrgency;
+    dueDate: string | null;
+    completed: boolean;
+    listId: string;
+  }>
+) {
+  return request<Task>(`/api/tasks/${taskId}`, {
+    token,
+    method: "PATCH",
+    body: payload
+  });
+}
+
+export function deleteTask(token: string, taskId: string) {
+  return request<null>(`/api/tasks/${taskId}`, {
+    token,
+    method: "DELETE"
+  });
 }

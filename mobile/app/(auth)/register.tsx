@@ -1,7 +1,7 @@
-import { Link, Redirect, router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useState } from "react";
+import { Link, Redirect, router } from "expo-router";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/context/AuthContext";
 import { theme } from "@/src/theme/tokens";
@@ -31,9 +31,7 @@ export default function RegisterScreen() {
       await signUp(email, password);
       router.replace("/(tabs)/feed");
     } catch (requestError) {
-      setError(
-        requestError instanceof Error ? requestError.message : "Could not create account"
-      );
+      setError(requestError instanceof Error ? requestError.message : "Could not create account");
     } finally {
       setSubmitting(false);
     }
@@ -43,34 +41,34 @@ export default function RegisterScreen() {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
         <Text style={styles.kicker}>Create Account</Text>
-        <Text style={styles.title}>Start your own map of memories.</Text>
+        <Text style={styles.title}>Build lists that feel manageable.</Text>
         <Text style={styles.subtitle}>
-          Create an account against the OSC-hosted auth API and keep your spots private.
+          Create an account and keep your task lists, urgency ranking, and completion history private.
         </Text>
 
         <View style={styles.form}>
           <TextInput
             autoCapitalize="none"
             keyboardType="email-address"
+            onChangeText={setEmail}
             placeholder="Email"
             placeholderTextColor={theme.colors.mutedText}
-            onChangeText={setEmail}
             style={styles.input}
             value={email}
           />
           <TextInput
+            onChangeText={setPassword}
             placeholder="Password"
             placeholderTextColor={theme.colors.mutedText}
             secureTextEntry
-            onChangeText={setPassword}
             style={styles.input}
             value={password}
           />
           <TextInput
+            onChangeText={setConfirmPassword}
             placeholder="Confirm password"
             placeholderTextColor={theme.colors.mutedText}
             secureTextEntry
-            onChangeText={setConfirmPassword}
             style={styles.input}
             value={confirmPassword}
           />
@@ -100,14 +98,14 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background
+    backgroundColor: theme.colors.background,
+    flex: 1
   },
   container: {
     flex: 1,
+    gap: 16,
     justifyContent: "center",
-    paddingHorizontal: 24,
-    gap: 16
+    paddingHorizontal: 24
   },
   kicker: {
     color: theme.colors.accent,

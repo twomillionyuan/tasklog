@@ -3,33 +3,87 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-import { recordSpotActivity } from "./activity.js";
 import { config } from "./config.js";
 import { pool } from "./db.js";
-import { removeImage } from "./storage.js";
-import type { AuthUser, SpotPhoto, SpotResponse, SpotRow } from "./types.js";
+import type {
+  AuthUser,
+  DashboardResponse,
+  DashboardSummary,
+  TaskCounts,
+  TaskListResponse,
+  TaskListRow,
+  TaskResponse,
+  TaskRow,
+  TaskUrgency
+} from "./types.js";
 
-const seedSpots = [
+const urgencyRanks: Record<TaskUrgency, number> = {
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4
+};
+
+const seedLists = [
   {
-    title: "Monteliusvagen Outlook",
-    note: "Warm light over the water and the quietest five minutes of the day.",
-    latitude: 59.3197,
-    longitude: 18.0583,
-    favorited: true
+    name: "Work",
+    color: "#D5E6C5",
+    tasks: [
+      {
+        title: "Review launch checklist",
+        notes: "Check release notes, comms, and rollback plan before noon.",
+        urgency: "critical" as const,
+        dueInDays: 0,
+        completed: false
+      },
+      {
+        title: "Reply to design feedback",
+        notes: "Close the loop on the onboarding copy changes.",
+        urgency: "high" as const,
+        dueInDays: 1,
+        completed: false
+      },
+      {
+        title: "Archive old sprint board",
+        notes: "Move finished tickets and update the retrospective notes.",
+        urgency: "medium" as const,
+        dueInDays: -1,
+        completed: true
+      }
+    ]
   },
   {
-    title: "Rosendals Garden",
-    note: "Coffee, gravel paths, and the kind of afternoon that makes the city feel slower.",
-    latitude: 59.3247,
-    longitude: 18.1459,
-    favorited: false
+    name: "Home",
+    color: "#F1D7C7",
+    tasks: [
+      {
+        title: "Book dentist appointment",
+        notes: "Find a morning slot next week.",
+        urgency: "high" as const,
+        dueInDays: 2,
+        completed: false
+      },
+      {
+        title: "Refill pantry staples",
+        notes: "Rice, olive oil, oats, and coffee beans.",
+        urgency: "medium" as const,
+        dueInDays: 3,
+        completed: false
+      }
+    ]
   },
   {
-    title: "Skeppsholmen Walk",
-    note: "Windy, bright, and worth it for the skyline view back toward the old town.",
-    latitude: 59.3252,
-    longitude: 18.0918,
-    favorited: true
+    name: "Someday",
+    color: "#CBD6F2",
+    tasks: [
+      {
+        title: "Plan summer trip budget",
+        notes: "Rough flight, hotel, and food estimate.",
+        urgency: "low" as const,
+        dueInDays: 10,
+        completed: false
+      }
+    ]
   }
 ] as const;
 
@@ -42,6 +96,85 @@ function toAuthUser(user: UserRecord): AuthUser {
     id: user.id,
     email: user.email,
     createdAt: user.createdAt
+  };
+}
+
+function toTaskResponse(task: TaskRow): TaskResponse {
+  return {
+    id: task.id,
+    listId: task.listId,
+    title: task.title,
+    notes: task.notes,
+    urgency: task.urgency,
+    dueDate: task.dueDate,
+    completed: Boolean(task.completedAt),
+    completedAt: task.completedAt,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt
+  };
+}
+
+function compareTasks(left: TaskResponse, right: TaskResponse) {
+  if (left.completed !== right.completed) {
+    return left.completed ? 1 : -1;
+  }
+
+  const urgencyDelta = urgencyRanks[right.urgency] - urgencyRanks[left.urgency];
+
+  if (urgencyDelta !== 0) {
+    return urgencyDelta;
+  }
+
+  if (left.dueDate && right.dueDate) {
+    return new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime();
+  }
+
+  if (left.dueDate) {
+    return -1;
+  }
+
+  if (right.dueDate) {
+    return 1;
+  }
+
+  return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+}
+
+function computeTaskCounts(tasks: TaskResponse[]): TaskCounts {
+  const now = Date.now();
+  let completed = 0;
+  let overdue = 0;
+
+  for (const task of tasks) {
+    if (task.completed) {
+      completed += 1;
+      continue;
+    }
+
+    if (task.dueDate && new Date(task.dueDate).getTime() < now) {
+      overdue += 1;
+    }
+  }
+
+  return {
+    total: tasks.length,
+    open: tasks.length - completed,
+    completed,
+    overdue
+  };
+}
+
+function toTaskListResponse(list: TaskListRow, tasks: TaskResponse[]): TaskListResponse {
+  const sortedTasks = [...tasks].sort(compareTasks);
+
+  return {
+    id: list.id,
+    name: list.name,
+    color: list.color,
+    createdAt: list.created_at,
+    updatedAt: list.updated_at,
+    summary: computeTaskCounts(sortedTasks),
+    tasks: sortedTasks
   };
 }
 
@@ -75,105 +208,182 @@ async function getUserByEmail(email: string) {
   } satisfies UserRecord;
 }
 
-async function getSpotPhotos(spotIds: string[]) {
-  if (spotIds.length === 0) {
-    return new Map<string, SpotPhoto[]>();
+async function listRowsForUser(userId: string) {
+  const [listsResult, tasksResult] = await Promise.all([
+    pool.query<TaskListRow>(
+      `
+        SELECT id, user_id, name, color, created_at, updated_at, archived_at
+        FROM task_lists
+        WHERE user_id = $1
+          AND archived_at IS NULL
+        ORDER BY updated_at DESC, created_at DESC
+      `,
+      [userId]
+    ),
+    pool.query<{
+      id: string;
+      user_id: string;
+      list_id: string;
+      title: string;
+      notes: string;
+      urgency: TaskUrgency;
+      due_date: string | null;
+      completed_at: string | null;
+      created_at: string;
+      updated_at: string;
+      deleted_at: string | null;
+    }>(
+      `
+        SELECT id, user_id, list_id, title, notes, urgency, due_date, completed_at, created_at, updated_at, deleted_at
+        FROM tasks
+        WHERE user_id = $1
+          AND deleted_at IS NULL
+      `,
+      [userId]
+    )
+  ]);
+
+  const tasksByList = new Map<string, TaskResponse[]>();
+
+  for (const row of tasksResult.rows) {
+    const current = tasksByList.get(row.list_id) ?? [];
+    current.push(
+      toTaskResponse({
+        id: row.id,
+        userId: row.user_id,
+        listId: row.list_id,
+        title: row.title,
+        notes: row.notes,
+        urgency: row.urgency,
+        dueDate: row.due_date,
+        completedAt: row.completed_at,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        deletedAt: row.deleted_at
+      })
+    );
+    tasksByList.set(row.list_id, current);
   }
 
-  const result = await pool.query<{
-    id: string;
-    spot_id: string;
-    storage_key: string;
-    image_url: string;
-    created_at: string;
-  }>(
-    `
-      SELECT id, spot_id, storage_key, image_url, created_at
-      FROM spot_photos
-      WHERE spot_id = ANY($1::text[])
-      ORDER BY created_at ASC
-    `,
-    [spotIds]
-  );
-
-  const grouped = new Map<string, SpotPhoto[]>();
-
-  for (const row of result.rows) {
-    const current = grouped.get(row.spot_id) ?? [];
-    current.push({
-      id: row.id,
-      storageKey: row.storage_key,
-      imageUrl: row.image_url,
-      createdAt: row.created_at
-    });
-    grouped.set(row.spot_id, current);
-  }
-
-  return grouped;
-}
-
-function toSpotResponse(spot: SpotRow, photos: SpotPhoto[] = []): SpotResponse {
   return {
-    id: spot.id,
-    title: spot.title,
-    note: spot.note,
-    latitude: spot.latitude,
-    longitude: spot.longitude,
-    favorited: spot.favorited,
-    createdAt: spot.created_at,
-    updatedAt: spot.updated_at,
-    photos
+    lists: listsResult.rows,
+    tasksByList
   };
 }
 
-export async function initializeStore() {
-  const existing = await getUserByEmail("ebba@example.com");
+async function getListRow(userId: string, listId: string) {
+  const result = await pool.query<TaskListRow>(
+    `
+      SELECT id, user_id, name, color, created_at, updated_at, archived_at
+      FROM task_lists
+      WHERE id = $1
+        AND user_id = $2
+        AND archived_at IS NULL
+      LIMIT 1
+    `,
+    [listId, userId]
+  );
 
-  if (existing) {
-    return;
-  }
+  return result.rows[0] ?? null;
+}
 
-  const passwordHash = await bcrypt.hash("secret12", 10);
-  const createdAt = new Date().toISOString();
-  const userId = randomUUID();
+async function ensureStarterList(userId: string) {
+  const timestamp = new Date().toISOString();
 
   await pool.query(
     `
-      INSERT INTO users (id, email, password_hash, created_at)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO task_lists (id, user_id, name, color, created_at, updated_at, archived_at)
+      VALUES ($1, $2, $3, $4, $5, $5, NULL)
     `,
-    [userId, "ebba@example.com", passwordHash, createdAt]
+    [randomUUID(), userId, "General", "#D5E6C5", timestamp]
   );
+}
 
-  for (const seed of seedSpots) {
-    const id = randomUUID();
+export async function initializeStore() {
+  let user = await getUserByEmail("ebba@example.com");
+
+  if (!user) {
+    const passwordHash = await bcrypt.hash("secret12", 10);
+    const createdAt = new Date().toISOString();
+    const userId = randomUUID();
+
     await pool.query(
       `
-        INSERT INTO spots (
-          id,
-          user_id,
-          title,
-          note,
-          latitude,
-          longitude,
-          favorited,
-          created_at,
-          updated_at,
-          deleted_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, NULL)
+        INSERT INTO users (id, email, password_hash, created_at)
+        VALUES ($1, $2, $3, $4)
       `,
-      [
-        id,
-        userId,
-        seed.title,
-        seed.note,
-        seed.latitude,
-        seed.longitude,
-        seed.favorited,
-        createdAt
-      ]
+      [userId, "ebba@example.com", passwordHash, createdAt]
     );
+
+    user = {
+      id: userId,
+      email: "ebba@example.com",
+      passwordHash,
+      createdAt
+    };
+  }
+
+  const countResult = await pool.query<{ count: string }>(
+    `
+      SELECT COUNT(*)::text AS count
+      FROM task_lists
+      WHERE user_id = $1
+        AND archived_at IS NULL
+    `,
+    [user.id]
+  );
+
+  if (Number(countResult.rows[0]?.count ?? "0") > 0) {
+    return;
+  }
+
+  for (const list of seedLists) {
+    const listId = randomUUID();
+    const listTimestamp = new Date().toISOString();
+
+    await pool.query(
+      `
+        INSERT INTO task_lists (id, user_id, name, color, created_at, updated_at, archived_at)
+        VALUES ($1, $2, $3, $4, $5, $5, NULL)
+      `,
+      [listId, user.id, list.name, list.color, listTimestamp]
+    );
+
+    for (const task of list.tasks) {
+      const createdAt = new Date().toISOString();
+      const dueDate = new Date();
+      dueDate.setUTCDate(dueDate.getUTCDate() + task.dueInDays);
+
+      await pool.query(
+        `
+          INSERT INTO tasks (
+            id,
+            user_id,
+            list_id,
+            title,
+            notes,
+            urgency,
+            due_date,
+            completed_at,
+            created_at,
+            updated_at,
+            deleted_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, NULL)
+        `,
+        [
+          randomUUID(),
+          user.id,
+          listId,
+          task.title,
+          task.notes,
+          task.urgency,
+          dueDate.toISOString(),
+          task.completed ? createdAt : null,
+          createdAt
+        ]
+      );
+    }
   }
 }
 
@@ -196,6 +406,8 @@ export async function createUser(email: string, password: string) {
     `,
     [userId, normalizedEmail, passwordHash, createdAt]
   );
+
+  await ensureStarterList(userId);
 
   return {
     id: userId,
@@ -272,49 +484,153 @@ export async function getUserByToken(token: string) {
   }
 }
 
-export async function listSpots(
+export async function listTaskLists(userId: string) {
+  const { lists, tasksByList } = await listRowsForUser(userId);
+
+  return lists.map((list) => toTaskListResponse(list, tasksByList.get(list.id) ?? []));
+}
+
+export async function getTaskList(userId: string, listId: string) {
+  const list = await getListRow(userId, listId);
+
+  if (!list) {
+    return null;
+  }
+
+  const { tasksByList } = await listRowsForUser(userId);
+  return toTaskListResponse(list, tasksByList.get(list.id) ?? []);
+}
+
+export async function createTaskList(
   userId: string,
-  filters: { search?: string; favorited?: boolean }
+  input: {
+    name: string;
+    color: string;
+  }
 ) {
-  const values: unknown[] = [userId];
-  const where = [`user_id = $1`, `deleted_at IS NULL`];
+  const id = randomUUID();
+  const timestamp = new Date().toISOString();
 
-  if (filters.search?.trim()) {
-    values.push(`%${filters.search.trim().toLowerCase()}%`);
-    where.push(`LOWER(title || ' ' || note) LIKE $${values.length}`);
-  }
-
-  if (typeof filters.favorited === "boolean") {
-    values.push(filters.favorited);
-    where.push(`favorited = $${values.length}`);
-  }
-
-  const result = await pool.query<SpotRow>(
+  await pool.query(
     `
-      SELECT id, user_id, title, note, latitude, longitude, favorited, created_at, updated_at, deleted_at
-      FROM spots
-      WHERE ${where.join(" AND ")}
-      ORDER BY created_at DESC
+      INSERT INTO task_lists (id, user_id, name, color, created_at, updated_at, archived_at)
+      VALUES ($1, $2, $3, $4, $5, $5, NULL)
+    `,
+    [id, userId, input.name.trim(), input.color.trim(), timestamp]
+  );
+
+  return getTaskList(userId, id);
+}
+
+export async function updateTaskList(
+  userId: string,
+  listId: string,
+  input: Partial<Pick<TaskListResponse, "name" | "color">>
+) {
+  const updates: string[] = [];
+  const values: unknown[] = [];
+
+  if (typeof input.name === "string") {
+    values.push(input.name.trim());
+    updates.push(`name = $${values.length}`);
+  }
+
+  if (typeof input.color === "string") {
+    values.push(input.color.trim());
+    updates.push(`color = $${values.length}`);
+  }
+
+  if (updates.length === 0) {
+    return getTaskList(userId, listId);
+  }
+
+  values.push(new Date().toISOString());
+  updates.push(`updated_at = $${values.length}`);
+
+  values.push(listId);
+  values.push(userId);
+
+  await pool.query(
+    `
+      UPDATE task_lists
+      SET ${updates.join(", ")}
+      WHERE id = $${values.length - 1}
+        AND user_id = $${values.length}
+        AND archived_at IS NULL
     `,
     values
   );
 
-  const photosBySpot = await getSpotPhotos(result.rows.map((row: SpotRow) => row.id));
-
-  return result.rows.map((row: SpotRow) =>
-    toSpotResponse(row, photosBySpot.get(row.id) ?? [])
-  );
+  return getTaskList(userId, listId);
 }
 
-export async function getSpot(userId: string, spotId: string) {
-  const result = await pool.query<SpotRow>(
+export async function archiveTaskList(userId: string, listId: string) {
+  const list = await getTaskList(userId, listId);
+
+  if (!list) {
+    return null;
+  }
+
+  const timestamp = new Date().toISOString();
+
+  await pool.query("BEGIN");
+
+  try {
+    await pool.query(
+      `
+        UPDATE task_lists
+        SET archived_at = $1,
+            updated_at = $1
+        WHERE id = $2
+          AND user_id = $3
+          AND archived_at IS NULL
+      `,
+      [timestamp, listId, userId]
+    );
+
+    await pool.query(
+      `
+        UPDATE tasks
+        SET deleted_at = $1,
+            updated_at = $1
+        WHERE list_id = $2
+          AND user_id = $3
+          AND deleted_at IS NULL
+      `,
+      [timestamp, listId, userId]
+    );
+
+    await pool.query("COMMIT");
+    return list;
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    throw error;
+  }
+}
+
+export async function getTask(userId: string, taskId: string) {
+  const result = await pool.query<{
+    id: string;
+    user_id: string;
+    list_id: string;
+    title: string;
+    notes: string;
+    urgency: TaskUrgency;
+    due_date: string | null;
+    completed_at: string | null;
+    created_at: string;
+    updated_at: string;
+    deleted_at: string | null;
+  }>(
     `
-      SELECT id, user_id, title, note, latitude, longitude, favorited, created_at, updated_at, deleted_at
-      FROM spots
-      WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+      SELECT id, user_id, list_id, title, notes, urgency, due_date, completed_at, created_at, updated_at, deleted_at
+      FROM tasks
+      WHERE id = $1
+        AND user_id = $2
+        AND deleted_at IS NULL
       LIMIT 1
     `,
-    [spotId, userId]
+    [taskId, userId]
   );
 
   const row = result.rows[0];
@@ -323,220 +639,282 @@ export async function getSpot(userId: string, spotId: string) {
     return null;
   }
 
-  const photosBySpot = await getSpotPhotos([row.id]);
-  return toSpotResponse(row, photosBySpot.get(row.id) ?? []);
+  return toTaskResponse({
+    id: row.id,
+    userId: row.user_id,
+    listId: row.list_id,
+    title: row.title,
+    notes: row.notes,
+    urgency: row.urgency,
+    dueDate: row.due_date,
+    completedAt: row.completed_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at
+  });
 }
 
-export async function createSpot(
+export async function createTask(
   userId: string,
   input: {
+    listId: string;
     title: string;
-    note?: string;
-    latitude: number;
-    longitude: number;
-    favorited?: boolean;
-    photos?: SpotPhoto[];
+    notes: string;
+    urgency: TaskUrgency;
+    dueDate: string | null;
   }
 ) {
-  const client = await pool.connect();
+  const list = await getListRow(userId, input.listId);
+
+  if (!list) {
+    throw new Error("LIST_NOT_FOUND");
+  }
+
   const id = randomUUID();
   const timestamp = new Date().toISOString();
 
+  await pool.query("BEGIN");
+
   try {
-    await client.query("BEGIN");
-    await client.query(
+    await pool.query(
       `
-        INSERT INTO spots (
+        INSERT INTO tasks (
           id,
           user_id,
+          list_id,
           title,
-          note,
-          latitude,
-          longitude,
-          favorited,
+          notes,
+          urgency,
+          due_date,
+          completed_at,
           created_at,
           updated_at,
           deleted_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, NULL)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, $8, $8, NULL)
       `,
       [
         id,
         userId,
+        input.listId,
         input.title.trim(),
-        input.note?.trim() ?? "",
-        input.latitude,
-        input.longitude,
-        input.favorited ?? false,
+        input.notes.trim(),
+        input.urgency,
+        input.dueDate,
         timestamp
       ]
     );
 
-    for (const photo of input.photos ?? []) {
-      await client.query(
-        `
-          INSERT INTO spot_photos (id, spot_id, storage_key, image_url, created_at)
-          VALUES ($1, $2, $3, $4, $5)
-        `,
-        [
-          photo.id || randomUUID(),
-          id,
-          photo.storageKey,
-          photo.imageUrl,
-          photo.createdAt || timestamp
-        ]
-      );
-    }
+    await pool.query(
+      `
+        UPDATE task_lists
+        SET updated_at = $1
+        WHERE id = $2
+          AND user_id = $3
+      `,
+      [timestamp, input.listId, userId]
+    );
 
-    await client.query("COMMIT");
+    await pool.query("COMMIT");
   } catch (error) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     throw error;
-  } finally {
-    client.release();
   }
 
-  const created = await getSpot(userId, id);
-
-  if (!created) {
-    throw new Error("SPOT_CREATE_FAILED");
-  }
-
-  await recordSpotActivity({
-    userId,
-    spotId: created.id,
-    title: created.title,
-    type: "created"
-  });
-
-  return created;
+  return getTask(userId, id);
 }
 
-export async function updateSpot(
+export async function updateTask(
   userId: string,
-  spotId: string,
-  input: Partial<Pick<SpotResponse, "title" | "note" | "favorited" | "latitude" | "longitude">>
+  taskId: string,
+  input: Partial<{
+    title: string;
+    notes: string;
+    urgency: TaskUrgency;
+    dueDate: string | null;
+    completed: boolean;
+    listId: string;
+  }>
 ) {
-  const fields: string[] = [];
-  const values: unknown[] = [];
+  const existing = await getTask(userId, taskId);
 
-  if (typeof input.title === "string") {
-    values.push(input.title.trim());
-    fields.push(`title = $${values.length}`);
-  }
-
-  if (typeof input.note === "string") {
-    values.push(input.note.trim());
-    fields.push(`note = $${values.length}`);
-  }
-
-  if (typeof input.favorited === "boolean") {
-    values.push(input.favorited);
-    fields.push(`favorited = $${values.length}`);
-  }
-
-  if (typeof input.latitude === "number") {
-    values.push(input.latitude);
-    fields.push(`latitude = $${values.length}`);
-  }
-
-  if (typeof input.longitude === "number") {
-    values.push(input.longitude);
-    fields.push(`longitude = $${values.length}`);
-  }
-
-  if (fields.length === 0) {
-    return getSpot(userId, spotId);
-  }
-
-  values.push(new Date().toISOString());
-  fields.push(`updated_at = $${values.length}`);
-  values.push(spotId);
-  values.push(userId);
-
-  const result = await pool.query(
-    `
-      UPDATE spots
-      SET ${fields.join(", ")}
-      WHERE id = $${values.length - 1} AND user_id = $${values.length} AND deleted_at IS NULL
-    `,
-    values
-  );
-
-  if (result.rowCount === 0) {
+  if (!existing) {
     return null;
   }
 
-  const updated = await getSpot(userId, spotId);
+  if (typeof input.listId === "string") {
+    const nextList = await getListRow(userId, input.listId);
 
-  if (updated) {
-    await recordSpotActivity({
-      userId,
-      spotId: updated.id,
-      title: updated.title,
-      type: "updated"
-    });
+    if (!nextList) {
+      throw new Error("LIST_NOT_FOUND");
+    }
   }
 
-  return updated;
+  const values: unknown[] = [];
+  const updates: string[] = [];
+  const nextTimestamp = new Date().toISOString();
+
+  if (typeof input.title === "string") {
+    values.push(input.title.trim());
+    updates.push(`title = $${values.length}`);
+  }
+
+  if (typeof input.notes === "string") {
+    values.push(input.notes.trim());
+    updates.push(`notes = $${values.length}`);
+  }
+
+  if (typeof input.urgency === "string") {
+    values.push(input.urgency);
+    updates.push(`urgency = $${values.length}`);
+  }
+
+  if (input.dueDate !== undefined) {
+    values.push(input.dueDate);
+    updates.push(`due_date = $${values.length}`);
+  }
+
+  if (typeof input.listId === "string") {
+    values.push(input.listId);
+    updates.push(`list_id = $${values.length}`);
+  }
+
+  if (typeof input.completed === "boolean") {
+    values.push(input.completed ? existing.completedAt ?? nextTimestamp : null);
+    updates.push(`completed_at = $${values.length}`);
+  }
+
+  if (updates.length === 0) {
+    return existing;
+  }
+
+  values.push(nextTimestamp);
+  updates.push(`updated_at = $${values.length}`);
+
+  values.push(taskId);
+  values.push(userId);
+
+  await pool.query("BEGIN");
+
+  try {
+    await pool.query(
+      `
+        UPDATE tasks
+        SET ${updates.join(", ")}
+        WHERE id = $${values.length - 1}
+          AND user_id = $${values.length}
+          AND deleted_at IS NULL
+      `,
+      values
+    );
+
+    const touchedListIds = new Set<string>([existing.listId, input.listId ?? existing.listId]);
+
+    for (const listId of touchedListIds) {
+      await pool.query(
+        `
+          UPDATE task_lists
+          SET updated_at = $1
+          WHERE id = $2
+            AND user_id = $3
+            AND archived_at IS NULL
+        `,
+        [nextTimestamp, listId, userId]
+      );
+    }
+
+    await pool.query("COMMIT");
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    throw error;
+  }
+
+  return getTask(userId, taskId);
 }
 
-export async function softDeleteSpot(userId: string, spotId: string) {
-  const result = await pool.query<{
-    id: string;
-    title: string;
-  }>(
-    `
-      UPDATE spots
-      SET deleted_at = $1, updated_at = $1
-      WHERE id = $2 AND user_id = $3 AND deleted_at IS NULL
-      RETURNING id, title
-    `,
-    [new Date().toISOString(), spotId, userId]
-  );
+export async function deleteTask(userId: string, taskId: string) {
+  const existing = await getTask(userId, taskId);
 
-  const deleted = result.rows[0];
-
-  if (!deleted) {
-    return false;
+  if (!existing) {
+    return null;
   }
 
-  await recordSpotActivity({
-    userId,
-    spotId: deleted.id,
-    title: deleted.title,
-    type: "deleted"
-  });
+  const timestamp = new Date().toISOString();
 
-  return true;
+  await pool.query("BEGIN");
+
+  try {
+    await pool.query(
+      `
+        UPDATE tasks
+        SET deleted_at = $1,
+            updated_at = $1
+        WHERE id = $2
+          AND user_id = $3
+          AND deleted_at IS NULL
+      `,
+      [timestamp, taskId, userId]
+    );
+
+    await pool.query(
+      `
+        UPDATE task_lists
+        SET updated_at = $1
+        WHERE id = $2
+          AND user_id = $3
+          AND archived_at IS NULL
+      `,
+      [timestamp, existing.listId, userId]
+    );
+
+    await pool.query("COMMIT");
+    return existing;
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    throw error;
+  }
 }
 
-export async function removeSpotPhoto(userId: string, spotId: string, photoId: string) {
-  const result = await pool.query<{
-    storage_key: string;
-  }>(
-    `
-      DELETE FROM spot_photos
-      WHERE id = $1
-        AND spot_id = $2
-        AND EXISTS (
-          SELECT 1
-          FROM spots
-          WHERE spots.id = $2
-            AND spots.user_id = $3
-            AND spots.deleted_at IS NULL
-        )
-      RETURNING storage_key
-    `,
-    [photoId, spotId, userId]
+function isSameUtcDate(dateValue: string, current: Date) {
+  const target = new Date(dateValue);
+
+  return (
+    target.getUTCFullYear() === current.getUTCFullYear() &&
+    target.getUTCMonth() === current.getUTCMonth() &&
+    target.getUTCDate() === current.getUTCDate()
   );
+}
 
-  const row = result.rows[0];
+export async function getDashboard(userId: string): Promise<DashboardResponse> {
+  const lists = await listTaskLists(userId);
+  const tasks = lists.flatMap((list) => list.tasks);
+  const summary: DashboardSummary = {
+    listCount: lists.length,
+    totalTasks: tasks.length,
+    openTasks: tasks.filter((task) => !task.completed).length,
+    completedTasks: tasks.filter((task) => task.completed).length,
+    overdueTasks: tasks.filter(
+      (task) => !task.completed && task.dueDate && new Date(task.dueDate).getTime() < Date.now()
+    ).length,
+    dueTodayTasks: tasks.filter(
+      (task) => !task.completed && task.dueDate && isSameUtcDate(task.dueDate, new Date())
+    ).length,
+    completionRate:
+      tasks.length === 0
+        ? 0
+        : Math.round((tasks.filter((task) => task.completed).length / tasks.length) * 100)
+  };
 
-  if (!row) {
-    return false;
-  }
-
-  await removeImage(row.storage_key);
-  return true;
+  return {
+    summary,
+    urgentTasks: tasks.filter((task) => !task.completed).sort(compareTasks).slice(0, 6),
+    recentCompletions: tasks
+      .filter((task) => task.completed && task.completedAt)
+      .sort(
+        (left, right) =>
+          new Date(right.completedAt ?? right.updatedAt).getTime() -
+          new Date(left.completedAt ?? left.updatedAt).getTime()
+      )
+      .slice(0, 6)
+  };
 }

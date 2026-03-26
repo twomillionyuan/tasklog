@@ -1,7 +1,7 @@
-import { Link, Redirect, router } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useState } from "react";
+import { Link, Redirect, router } from "expo-router";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/src/context/AuthContext";
 import { theme } from "@/src/theme/tokens";
@@ -25,9 +25,7 @@ export default function LoginScreen() {
       await signIn(email, password);
       router.replace("/(tabs)/feed");
     } catch (requestError) {
-      setError(
-        requestError instanceof Error ? requestError.message : "Could not sign in"
-      );
+      setError(requestError instanceof Error ? requestError.message : "Could not sign in");
     } finally {
       setSubmitting(false);
     }
@@ -39,24 +37,24 @@ export default function LoginScreen() {
         <Text style={styles.kicker}>Sign In</Text>
         <Text style={styles.title}>Welcome back.</Text>
         <Text style={styles.subtitle}>
-          Sign in against the OSC-hosted SpotLog API.
+          Sign in to your OSC-hosted task lists and pick up where you left off.
         </Text>
 
         <View style={styles.form}>
           <TextInput
             autoCapitalize="none"
             keyboardType="email-address"
+            onChangeText={setEmail}
             placeholder="Email"
             placeholderTextColor={theme.colors.mutedText}
-            onChangeText={setEmail}
             style={styles.input}
             value={email}
           />
           <TextInput
+            onChangeText={setPassword}
             placeholder="Password"
             placeholderTextColor={theme.colors.mutedText}
             secureTextEntry
-            onChangeText={setPassword}
             style={styles.input}
             value={password}
           />
@@ -76,9 +74,7 @@ export default function LoginScreen() {
 
         <Link href="/(auth)/register" asChild>
           <Pressable style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonLabel}>
-              Need an account? Create one
-            </Text>
+            <Text style={styles.secondaryButtonLabel}>Need an account? Create one</Text>
           </Pressable>
         </Link>
       </View>
@@ -88,14 +84,14 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background
+    backgroundColor: theme.colors.background,
+    flex: 1
   },
   container: {
     flex: 1,
+    gap: 16,
     justifyContent: "center",
-    paddingHorizontal: 24,
-    gap: 16
+    paddingHorizontal: 24
   },
   kicker: {
     color: theme.colors.accent,

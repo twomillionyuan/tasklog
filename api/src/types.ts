@@ -10,57 +10,74 @@ export type SessionRecord = {
   createdAt: string;
 };
 
-export type SpotPhoto = {
+export type TaskUrgency = "low" | "medium" | "high" | "critical";
+
+export type TaskListRow = {
   id: string;
-  imageUrl: string;
-  storageKey: string;
-  createdAt: string;
+  user_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+  archived_at: string | null;
 };
 
-export type SpotRecord = {
+export type TaskRow = {
   id: string;
   userId: string;
+  listId: string;
   title: string;
-  note: string;
-  latitude: number;
-  longitude: number;
-  favorited: boolean;
+  notes: string;
+  urgency: TaskUrgency;
+  dueDate: string | null;
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
-  photos: SpotPhoto[];
 };
 
-export type SpotResponse = {
+export type TaskResponse = {
   id: string;
+  listId: string;
   title: string;
-  note: string;
-  latitude: number;
-  longitude: number;
-  favorited: boolean;
+  notes: string;
+  urgency: TaskUrgency;
+  dueDate: string | null;
+  completed: boolean;
+  completedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  photos: SpotPhoto[];
 };
 
-export type SpotRow = {
-  id: string;
-  user_id: string;
-  title: string;
-  note: string;
-  latitude: number;
-  longitude: number;
-  favorited: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
+export type TaskCounts = {
+  total: number;
+  open: number;
+  completed: number;
+  overdue: number;
 };
 
-export type ActivityEvent = {
+export type TaskListResponse = {
   id: string;
-  userId: string;
-  spotId: string;
-  title: string;
-  type: "created" | "updated" | "deleted";
+  name: string;
+  color: string;
   createdAt: string;
+  updatedAt: string;
+  summary: TaskCounts;
+  tasks: TaskResponse[];
+};
+
+export type DashboardSummary = {
+  listCount: number;
+  totalTasks: number;
+  openTasks: number;
+  completedTasks: number;
+  overdueTasks: number;
+  dueTodayTasks: number;
+  completionRate: number;
+};
+
+export type DashboardResponse = {
+  summary: DashboardSummary;
+  urgentTasks: TaskResponse[];
+  recentCompletions: TaskResponse[];
 };
