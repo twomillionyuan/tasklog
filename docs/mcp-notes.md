@@ -2,6 +2,8 @@
 
 This file records the OSC MCP calls used for TaskLog and what they proved.
 
+Legacy note: some OSC resource names below still contain `spotlog` because those were the names used when the backing services were first created.
+
 ## Discovery
 
 - `list-service-categories`
@@ -27,11 +29,11 @@ This file records the OSC MCP calls used for TaskLog and what they proved.
 
 ## Application Operations
 
-- `get-my-app { appId: "spotlogbackend" }`
-- `diagnose-my-app { appName: "spotlogbackend" }`
-- `get-my-app-logs { appId: "spotlogbackend", tail: 80 }`
-- `restart-my-app { appId: "spotlogbackend" }`
-- `restart-my-app { appId: "spotlogbackend", rebuild: true }`
+- `get-my-app { appId: "tasklogbackend" }`
+- `diagnose-my-app { appName: "tasklogbackend" }`
+- `get-my-app-logs { appId: "tasklogbackend", tail: 80 }`
+- `restart-my-app { appId: "tasklogbackend" }`
+- `restart-my-app { appId: "tasklogbackend", rebuild: true }`
 
 ## Config-Switch Exercise
 
@@ -39,8 +41,8 @@ This file records the OSC MCP calls used for TaskLog and what they proved.
 - `list-service-instances { serviceId: "eyevinn-app-config-svc" }`
 - `list-service-instances { serviceId: "valkey-io-valkey" }`
 - `set-parameter { parameterStore: "spotlogconfigb", ... }`
-- `update-my-app-config { appId: "spotlogbackend", configService: "spotlogconfigb" }`
-- `update-my-app-config { appId: "spotlogbackend", configService: "spotlogconfig" }`
+- `update-my-app-config { appId: "tasklogbackend", configService: "spotlogconfigb" }`
+- `update-my-app-config { appId: "tasklogbackend", configService: "spotlogconfig" }`
 - `delete-service-instance { serviceId: "eyevinn-app-config-svc", name: "spotlogconfigb" }`
 - `delete-service-instance { serviceId: "valkey-io-valkey", name: "spotlogconfigb" }`
 
@@ -67,7 +69,7 @@ This file records the OSC MCP calls used for TaskLog and what they proved.
 
 ## Notes
 
-- The app concept changed from SpotLog to TaskLog, but the same OSC stack is exercised: Postgres, bucket storage, parameter store, managed app, domain, and one catalog service.
+- TaskLog uses the same OSC stack throughout: Postgres, bucket storage, parameter store, managed app, domain, and one catalog service.
 - `setup-parameter-store` timed out for `spotlogconfigb`, but the service instances were actually created. The timeout is itself a useful DX finding.
 - `apache-couchdb` has no OpenAPI spec in OSC today, so integration required direct HTTP usage instead of `call-service-endpoint`.
 - `restart-my-app` with `rebuild: true` was required after the runner reused a broken dependency cache. After the root build script and lockfile were fixed, normal restarts were sufficient again.

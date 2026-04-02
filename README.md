@@ -2,7 +2,7 @@
 
 TaskLog is a private to-do list mobile app built with Expo React Native and an OSC-managed backend provisioned through MCP.
 
-The original assignment concept was `SpotLog`, a photo journal. This repo now implements the same MCP-first OSC assignment shape with a to-do list product instead:
+This repo implements the MCP-first OSC assignment shape with a task-management product:
 
 - Expo mobile app
 - OSC My App Node.js API

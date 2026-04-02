@@ -1,6 +1,6 @@
 # TaskLog Assignment Checklist
 
-This checklist maps the original `SpotLog` assignment to the current `TaskLog` app. The product concept changed, but the required OSC/MCP capabilities are exercised through equivalent task-management features.
+This checklist tracks the current `TaskLog` app and the OSC/MCP capabilities it exercises through task-management features.
 
 ## Status
 

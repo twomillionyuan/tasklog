@@ -20,4 +20,4 @@ flowchart LR
 - The mobile app talks only to the TaskLog API.
 - The API owns authentication, task/list CRUD, attachment upload, and activity mirroring.
 - OSC MCP is the management layer for service provisioning, parameter-store changes, app restart, diagnostics, domain management, and service discovery.
-- The app concept changed from `SpotLog` to `TaskLog`, but the backend responsibilities still exercise the same OSC capabilities required by the assignment.
+- TaskLog exercises the same OSC capabilities required by the assignment: mobile client, managed API, database, storage, config, and catalog-service integration.

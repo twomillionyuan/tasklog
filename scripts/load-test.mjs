@@ -1,6 +1,9 @@
 import { performance } from "node:perf_hooks";
 
-const baseUrl = process.env.TASKLOG_BASE_URL ?? process.env.SPOTLOG_BASE_URL ?? "https://ecb8e1cf30.apps.osaas.io";
+const baseUrl =
+  process.env.TASKLOG_BASE_URL ??
+  process.env.SPOTLOG_BASE_URL ??
+  "https://tasklogbackend.apps.osaas.io";
 const email = process.env.TASKLOG_EMAIL ?? process.env.SPOTLOG_EMAIL ?? "ebba@example.com";
 const password = process.env.TASKLOG_PASSWORD ?? process.env.SPOTLOG_PASSWORD ?? "secret12";
 const levels = [10, 50, 100];

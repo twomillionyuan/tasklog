@@ -23,7 +23,7 @@ The API currently exposes:
 
 ## Recommended App Name
 
-Use `spotlogapi` for the OSC app name to avoid the alphanumeric naming constraint.
+Use `tasklogbackend` for the OSC app name to avoid the alphanumeric naming constraint.
 
 ## Next Deployment Steps
 
