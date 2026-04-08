@@ -2,8 +2,8 @@ import { Router } from "express";
 import multer from "multer";
 
 import { requireAuth } from "../middleware/auth.js";
-import { createTask, deleteTask, getTask, setTaskAttachment, updateTask } from "../store.js";
-import { removeAttachment, uploadTaskAttachment } from "../storage.js";
+import { createTask, deleteTask, getTask, setTaskPhoto, updateTask } from "../store.js";
+import { removeAttachment, uploadTaskPhoto } from "../storage.js";
 import type { TaskUrgency } from "../types.js";
 
 const validUrgencies = new Set<TaskUrgency>(["low", "medium", "high", "critical"]);
@@ -68,6 +68,12 @@ tasksRouter.post("/", async (req, res) => {
       });
     }
 
+    if (error instanceof Error && error.message === "AFTER_PHOTO_REQUIRED") {
+      return res.status(400).json({
+        error: "Add both a before photo and an after photo before completing this task"
+      });
+    }
+
     throw error;
   }
 });
@@ -84,84 +90,97 @@ tasksRouter.get("/:id", async (req, res) => {
   return res.status(200).json(task);
 });
 
-tasksRouter.post("/:id/attachment", upload.single("image"), async (req, res) => {
-  const task = await getTask(req.authUser!.id, readParamId(req.params.id));
+function registerPhotoRoutes(kind: "before" | "after") {
+  tasksRouter.post(`/:id/${kind}-photo`, upload.single("image"), async (req, res) => {
+    const task = await getTask(req.authUser!.id, readParamId(req.params.id));
 
-  if (!task) {
-    return res.status(404).json({
-      error: "Task not found"
-    });
-  }
-
-  if (!req.file || !req.file.mimetype.startsWith("image/")) {
-    return res.status(400).json({
-      error: "Image file is required"
-    });
-  }
-
-  try {
-    const uploaded = await uploadTaskAttachment({
-      userId: req.authUser!.id,
-      taskId: task.id,
-      buffer: req.file.buffer,
-      contentType: req.file.mimetype
-    });
-
-    if (task.attachmentStorageKey) {
-      await removeAttachment(task.attachmentStorageKey);
-    }
-
-    const updated = await setTaskAttachment(req.authUser!.id, task.id, {
-      attachmentUrl: uploaded.attachmentUrl,
-      attachmentStorageKey: uploaded.key
-    });
-
-    return res.status(200).json(updated);
-  } catch (error) {
-    if (error instanceof Error && error.message === "STORAGE_DISABLED") {
-      return res.status(503).json({
-        error: "Storage is not configured"
+    if (!task) {
+      return res.status(404).json({
+        error: "Task not found"
       });
     }
 
-    throw error;
-  }
-});
-
-tasksRouter.delete("/:id/attachment", async (req, res) => {
-  const task = await getTask(req.authUser!.id, readParamId(req.params.id));
-
-  if (!task) {
-    return res.status(404).json({
-      error: "Task not found"
-    });
-  }
-
-  if (!task.attachmentUrl) {
-    return res.status(200).json(task);
-  }
-
-  try {
-    if (task.attachmentStorageKey) {
-      await removeAttachment(task.attachmentStorageKey);
-    }
-
-    const updated = await setTaskAttachment(req.authUser!.id, task.id, {
-      attachmentUrl: null,
-      attachmentStorageKey: null
-    });
-
-    return res.status(200).json(updated);
-  } catch (error) {
-    if (error instanceof Error && error.message === "STORAGE_DISABLED") {
-      return res.status(503).json({
-        error: "Storage is not configured"
+    if (!req.file || !req.file.mimetype.startsWith("image/")) {
+      return res.status(400).json({
+        error: "Image file is required"
       });
     }
 
-    throw error;
-  }
-});
+    try {
+      const uploaded = await uploadTaskPhoto({
+        userId: req.authUser!.id,
+        taskId: task.id,
+        kind,
+        buffer: req.file.buffer,
+        contentType: req.file.mimetype
+      });
+
+      const existingStorageKey =
+        kind === "before" ? task.beforePhotoStorageKey : task.afterPhotoStorageKey;
+
+      if (existingStorageKey) {
+        await removeAttachment(existingStorageKey);
+      }
+
+      const updated = await setTaskPhoto(req.authUser!.id, task.id, kind, {
+        photoUrl: uploaded.attachmentUrl,
+        photoStorageKey: uploaded.key
+      });
+
+      return res.status(200).json(updated);
+    } catch (error) {
+      if (error instanceof Error && error.message === "STORAGE_DISABLED") {
+        return res.status(503).json({
+          error: "Storage is not configured"
+        });
+      }
+
+      throw error;
+    }
+  });
+
+  tasksRouter.delete(`/:id/${kind}-photo`, async (req, res) => {
+    const task = await getTask(req.authUser!.id, readParamId(req.params.id));
+
+    if (!task) {
+      return res.status(404).json({
+        error: "Task not found"
+      });
+    }
+
+    const existingPhotoUrl = kind === "before" ? task.beforePhotoUrl : task.afterPhotoUrl;
+    const existingStorageKey =
+      kind === "before" ? task.beforePhotoStorageKey : task.afterPhotoStorageKey;
+
+    if (!existingPhotoUrl) {
+      return res.status(200).json(task);
+    }
+
+    try {
+      if (existingStorageKey) {
+        await removeAttachment(existingStorageKey);
+      }
+
+      const updated = await setTaskPhoto(req.authUser!.id, task.id, kind, {
+        photoUrl: null,
+        photoStorageKey: null
+      });
+
+      return res.status(200).json(updated);
+    } catch (error) {
+      if (error instanceof Error && error.message === "STORAGE_DISABLED") {
+        return res.status(503).json({
+          error: "Storage is not configured"
+        });
+      }
+
+      throw error;
+    }
+  });
+}
+
+registerPhotoRoutes("before");
+registerPhotoRoutes("after");
 
 tasksRouter.patch("/:id", async (req, res) => {
   const updates = {
@@ -199,6 +218,12 @@ tasksRouter.patch("/:id", async (req, res) => {
     if (error instanceof Error && error.message === "LIST_NOT_FOUND") {
       return res.status(404).json({
         error: "List not found"
+      });
+    }
+
+    if (error instanceof Error && error.message === "AFTER_PHOTO_REQUIRED") {
+      return res.status(400).json({
+        error: "Add both a before photo and an after photo before completing this task"
       });
     }
 

@@ -108,8 +108,10 @@ function toTaskResponse(task: TaskRow): TaskResponse {
     notes: task.notes,
     urgency: task.urgency,
     dueDate: task.dueDate,
-    attachmentUrl: task.attachmentUrl,
-    attachmentStorageKey: task.attachmentStorageKey,
+    beforePhotoUrl: task.beforePhotoUrl,
+    beforePhotoStorageKey: task.beforePhotoStorageKey,
+    afterPhotoUrl: task.afterPhotoUrl,
+    afterPhotoStorageKey: task.afterPhotoStorageKey,
     completed: Boolean(task.completedAt),
     completedAt: task.completedAt,
     createdAt: task.createdAt,
@@ -174,6 +176,8 @@ function toTaskListResponse(list: TaskListRow, tasks: TaskResponse[]): TaskListR
     id: list.id,
     name: list.name,
     color: list.color,
+    attachmentUrl: list.attachment_url,
+    attachmentStorageKey: list.attachment_storage_key,
     sortOrder: list.sort_order,
     createdAt: list.created_at,
     updatedAt: list.updated_at,
@@ -216,7 +220,7 @@ async function listRowsForUser(userId: string) {
   const [listsResult, tasksResult] = await Promise.all([
     pool.query<TaskListRow>(
       `
-        SELECT id, user_id, name, color, sort_order, created_at, updated_at, archived_at
+        SELECT id, user_id, name, color, attachment_url, attachment_storage_key, sort_order, created_at, updated_at, archived_at
         FROM task_lists
         WHERE user_id = $1
           AND archived_at IS NULL
@@ -234,6 +238,10 @@ async function listRowsForUser(userId: string) {
       due_date: string | null;
       attachment_url: string | null;
       attachment_storage_key: string | null;
+      before_photo_url: string | null;
+      before_photo_storage_key: string | null;
+      after_photo_url: string | null;
+      after_photo_storage_key: string | null;
       completed_at: string | null;
       created_at: string;
       updated_at: string;
@@ -250,6 +258,10 @@ async function listRowsForUser(userId: string) {
           due_date,
           attachment_url,
           attachment_storage_key,
+          before_photo_url,
+          before_photo_storage_key,
+          after_photo_url,
+          after_photo_storage_key,
           completed_at,
           created_at,
           updated_at,
@@ -275,8 +287,10 @@ async function listRowsForUser(userId: string) {
         notes: row.notes,
         urgency: row.urgency,
         dueDate: row.due_date,
-        attachmentUrl: row.attachment_url,
-        attachmentStorageKey: row.attachment_storage_key,
+        beforePhotoUrl: row.before_photo_url ?? row.attachment_url,
+        beforePhotoStorageKey: row.before_photo_storage_key ?? row.attachment_storage_key,
+        afterPhotoUrl: row.after_photo_url,
+        afterPhotoStorageKey: row.after_photo_storage_key,
         completedAt: row.completed_at,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -295,7 +309,7 @@ async function listRowsForUser(userId: string) {
 async function getListRow(userId: string, listId: string) {
   const result = await pool.query<TaskListRow>(
     `
-      SELECT id, user_id, name, color, sort_order, created_at, updated_at, archived_at
+      SELECT id, user_id, name, color, attachment_url, attachment_storage_key, sort_order, created_at, updated_at, archived_at
       FROM task_lists
       WHERE id = $1
         AND user_id = $2
@@ -724,6 +738,10 @@ export async function getTask(userId: string, taskId: string) {
     due_date: string | null;
     attachment_url: string | null;
     attachment_storage_key: string | null;
+    before_photo_url: string | null;
+    before_photo_storage_key: string | null;
+    after_photo_url: string | null;
+    after_photo_storage_key: string | null;
     completed_at: string | null;
     created_at: string;
     updated_at: string;
@@ -740,6 +758,10 @@ export async function getTask(userId: string, taskId: string) {
         due_date,
         attachment_url,
         attachment_storage_key,
+        before_photo_url,
+        before_photo_storage_key,
+        after_photo_url,
+        after_photo_storage_key,
         completed_at,
         created_at,
         updated_at,
@@ -767,8 +789,10 @@ export async function getTask(userId: string, taskId: string) {
     notes: row.notes,
     urgency: row.urgency,
     dueDate: row.due_date,
-    attachmentUrl: row.attachment_url,
-    attachmentStorageKey: row.attachment_storage_key,
+    beforePhotoUrl: row.before_photo_url ?? row.attachment_url,
+    beforePhotoStorageKey: row.before_photo_storage_key ?? row.attachment_storage_key,
+    afterPhotoUrl: row.after_photo_url,
+    afterPhotoStorageKey: row.after_photo_storage_key,
     completedAt: row.completed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -810,12 +834,16 @@ export async function createTask(
           due_date,
           attachment_url,
           attachment_storage_key,
+          before_photo_url,
+          before_photo_storage_key,
+          after_photo_url,
+          after_photo_storage_key,
           completed_at,
           created_at,
           updated_at,
           deleted_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, $8, $8, NULL)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, NULL, NULL, NULL, $8, $8, NULL)
       `,
       [
         id,
@@ -887,6 +915,10 @@ export async function updateTask(
   const nextTimestamp = new Date().toISOString();
   const nextCompleted =
     typeof input.completed === "boolean" ? input.completed : existing.completed;
+
+  if (input.completed === true && (!existing.beforePhotoUrl || !existing.afterPhotoUrl)) {
+    throw new Error("AFTER_PHOTO_REQUIRED");
+  }
 
   if (typeof input.title === "string") {
     values.push(input.title.trim());
@@ -1030,12 +1062,13 @@ export async function deleteTask(userId: string, taskId: string) {
   }
 }
 
-export async function setTaskAttachment(
+export async function setTaskPhoto(
   userId: string,
   taskId: string,
-  attachment: {
-    attachmentUrl: string | null;
-    attachmentStorageKey: string | null;
+  kind: "before" | "after",
+  photo: {
+    photoUrl: string | null;
+    photoStorageKey: string | null;
   }
 ) {
   const existing = await getTask(userId, taskId);
@@ -1052,14 +1085,14 @@ export async function setTaskAttachment(
     await pool.query(
       `
         UPDATE tasks
-        SET attachment_url = $1,
-            attachment_storage_key = $2,
+        SET ${kind === "before" ? "before_photo_url" : "after_photo_url"} = $1,
+            ${kind === "before" ? "before_photo_storage_key" : "after_photo_storage_key"} = $2,
             updated_at = $3
         WHERE id = $4
           AND user_id = $5
           AND deleted_at IS NULL
       `,
-      [attachment.attachmentUrl, attachment.attachmentStorageKey, timestamp, taskId, userId]
+      [photo.photoUrl, photo.photoStorageKey, timestamp, taskId, userId]
     );
 
     await pool.query(
@@ -1087,6 +1120,50 @@ export async function setTaskAttachment(
       entityType: "task",
       entityId: taskId,
       title: updated.title,
+      type: photo.photoUrl ? "attached" : "updated"
+    });
+  }
+
+  return updated;
+}
+
+export async function setTaskListAttachment(
+  userId: string,
+  listId: string,
+  attachment: {
+    attachmentUrl: string | null;
+    attachmentStorageKey: string | null;
+  }
+) {
+  const existing = await getListRow(userId, listId);
+
+  if (!existing) {
+    return null;
+  }
+
+  const timestamp = new Date().toISOString();
+
+  await pool.query(
+    `
+      UPDATE task_lists
+      SET attachment_url = $1,
+          attachment_storage_key = $2,
+          updated_at = $3
+      WHERE id = $4
+        AND user_id = $5
+        AND archived_at IS NULL
+    `,
+    [attachment.attachmentUrl, attachment.attachmentStorageKey, timestamp, listId, userId]
+  );
+
+  const updated = await getTaskList(userId, listId);
+
+  if (updated) {
+    void recordActivity({
+      userId,
+      entityType: "list",
+      entityId: listId,
+      title: updated.name,
       type: attachment.attachmentUrl ? "attached" : "updated"
     });
   }

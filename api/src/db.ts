@@ -23,6 +23,8 @@ export async function migrateDatabase() {
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       color TEXT NOT NULL,
+      attachment_url TEXT,
+      attachment_storage_key TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL,
@@ -36,6 +38,16 @@ export async function migrateDatabase() {
   `);
 
   await pool.query(`
+    ALTER TABLE task_lists
+    ADD COLUMN IF NOT EXISTS attachment_url TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE task_lists
+    ADD COLUMN IF NOT EXISTS attachment_storage_key TEXT;
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -46,6 +58,10 @@ export async function migrateDatabase() {
       due_date TIMESTAMPTZ,
       attachment_url TEXT,
       attachment_storage_key TEXT,
+      before_photo_url TEXT,
+      before_photo_storage_key TEXT,
+      after_photo_url TEXT,
+      after_photo_storage_key TEXT,
       completed_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL,
@@ -61,6 +77,34 @@ export async function migrateDatabase() {
   await pool.query(`
     ALTER TABLE tasks
     ADD COLUMN IF NOT EXISTS attachment_storage_key TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS before_photo_url TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS before_photo_storage_key TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS after_photo_url TEXT;
+  `);
+
+  await pool.query(`
+    ALTER TABLE tasks
+    ADD COLUMN IF NOT EXISTS after_photo_storage_key TEXT;
+  `);
+
+  await pool.query(`
+    UPDATE tasks
+    SET before_photo_url = COALESCE(before_photo_url, attachment_url),
+        before_photo_storage_key = COALESCE(before_photo_storage_key, attachment_storage_key)
+    WHERE attachment_url IS NOT NULL
+       OR attachment_storage_key IS NOT NULL;
   `);
 
   await pool.query(`

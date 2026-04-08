@@ -83,7 +83,7 @@ export async function ensureStorageBucket() {
   const storageConfig = getStorageConfig();
 
   if (!storageConfig) {
-    console.log("TaskLog startup: storage disabled");
+    console.log("TaskSnap startup: storage disabled");
     return;
   }
 
@@ -110,7 +110,7 @@ export async function ensureStorageBucket() {
         Version: "2012-10-17",
         Statement: [
           {
-            Sid: "AllowPublicReadForTaskLog",
+            Sid: "AllowPublicReadForTaskSnap",
             Effect: "Allow",
             Principal: "*",
             Action: ["s3:GetObject"],
@@ -122,9 +122,10 @@ export async function ensureStorageBucket() {
   );
 }
 
-export async function uploadTaskAttachment(input: {
+export async function uploadTaskPhoto(input: {
   userId: string;
   taskId: string;
+  kind: "before" | "after";
   buffer: Buffer;
   contentType: string;
 }) {
@@ -135,7 +136,37 @@ export async function uploadTaskAttachment(input: {
   }
 
   const s3Client = getS3Client();
-  const key = `${input.userId}/tasks/${input.taskId}/${new Date().toISOString().slice(0, 10)}-${randomUUID()}.${extensionFromMimeType(input.contentType)}`;
+  const key = `${input.userId}/tasks/${input.taskId}/${input.kind}/${new Date().toISOString().slice(0, 10)}-${randomUUID()}.${extensionFromMimeType(input.contentType)}`;
+
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: storageConfig.bucketName,
+      Key: key,
+      Body: input.buffer,
+      ContentType: input.contentType
+    })
+  );
+
+  return {
+    key,
+    attachmentUrl: buildAttachmentUrl(key)
+  };
+}
+
+export async function uploadListAttachment(input: {
+  userId: string;
+  listId: string;
+  buffer: Buffer;
+  contentType: string;
+}) {
+  const storageConfig = getStorageConfig();
+
+  if (!storageConfig) {
+    throw new Error("STORAGE_DISABLED");
+  }
+
+  const s3Client = getS3Client();
+  const key = `${input.userId}/lists/${input.listId}/${new Date().toISOString().slice(0, 10)}-${randomUUID()}.${extensionFromMimeType(input.contentType)}`;
 
   await s3Client.send(
     new PutObjectCommand({
