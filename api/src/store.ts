@@ -843,7 +843,7 @@ export async function createTask(
           updated_at,
           deleted_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, NULL, NULL, NULL, $8, $8, NULL)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $8, $8, NULL)
       `,
       [
         id,
