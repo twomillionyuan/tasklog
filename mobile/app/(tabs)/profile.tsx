@@ -10,6 +10,26 @@ import { formatDateTime } from "@/src/lib/format";
 import { theme } from "@/src/theme/tokens";
 import type { ActivityEvent, Dashboard } from "@/src/types/api";
 
+function formatActivityLabel(event: ActivityEvent) {
+  if (event.type === "attached") {
+    return event.entityType === "task" ? "Photo added" : "Cover image added";
+  }
+
+  if (event.type === "created") {
+    return event.entityType === "task" ? "Task created" : "List created";
+  }
+
+  if (event.type === "completed") {
+    return "Task completed";
+  }
+
+  if (event.type === "deleted") {
+    return event.entityType === "task" ? "Task deleted" : "List deleted";
+  }
+
+  return event.entityType === "task" ? "Task updated" : "List updated";
+}
+
 export default function ProfileScreen() {
   const { token, user, signOut } = useAuth();
   const isFocused = useIsFocused();
@@ -128,7 +148,7 @@ export default function ProfileScreen() {
                   <View key={event.id} style={styles.activityCard}>
                     <Text style={styles.activityEventTitle}>{event.title}</Text>
                     <Text style={styles.activityBody}>
-                      {event.entityType === "task" ? "Task" : "List"} {event.type} · {formatDateTime(event.createdAt)}
+                      {formatActivityLabel(event)} · {formatDateTime(event.createdAt)}
                     </Text>
                   </View>
                 ))

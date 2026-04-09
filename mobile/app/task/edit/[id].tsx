@@ -327,34 +327,10 @@ export default function EditTaskScreen() {
                   <Image source={{ uri: task.beforePhotoUrl }} style={styles.attachmentPreview} />
                 ) : (
                   <View style={styles.attachmentEmpty}>
-                    <Text style={styles.helperText}>Add the before photo for this task.</Text>
+                    <Text style={styles.helperText}>No before photo was added when this task was created.</Text>
                   </View>
                 )}
-                <View style={styles.attachmentActions}>
-                  <Pressable
-                    disabled={uploadingAttachment}
-                    onPress={() => handlePickPhoto("before", "camera")}
-                    style={[styles.filterChip, uploadingAttachment && styles.buttonDisabled]}
-                  >
-                    <Text style={styles.filterChipLabel}>Camera</Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={uploadingAttachment}
-                    onPress={() => handlePickPhoto("before", "library")}
-                    style={[styles.filterChip, uploadingAttachment && styles.buttonDisabled]}
-                  >
-                    <Text style={styles.filterChipLabel}>Library</Text>
-                  </Pressable>
-                  {task.beforePhotoUrl ? (
-                    <Pressable
-                      disabled={uploadingAttachment}
-                      onPress={() => handleRemovePhoto("before")}
-                      style={[styles.filterChip, uploadingAttachment && styles.buttonDisabled]}
-                    >
-                      <Text style={styles.filterChipLabel}>Remove</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
+                <Text style={styles.helperText}>Before photos can only be added when creating the task.</Text>
               </View>
 
               <View style={styles.attachmentSection}>

@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useIsFocused, useNavigation } from "@react-navigation/native";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   RefreshControl,
@@ -143,11 +144,6 @@ export default function ListsScreen() {
       return;
     }
 
-    if (!newTaskBeforePhoto) {
-      setError("Add a before photo when creating a task.");
-      return;
-    }
-
     setSavingTask(true);
     setError(null);
 
@@ -160,7 +156,9 @@ export default function ListsScreen() {
         dueDate: dueDateFromPreset(newTaskDuePreset, newTaskSpecificDate)
       });
 
-      await uploadTaskPhoto(token, created.id, "before", newTaskBeforePhoto);
+      if (newTaskBeforePhoto) {
+        await uploadTaskPhoto(token, created.id, "before", newTaskBeforePhoto);
+      }
 
       setAddingTaskListId(null);
       setNewTaskTitle("");
@@ -209,6 +207,38 @@ export default function ListsScreen() {
       fileName: asset.fileName ?? `tasksnap-${Date.now()}.jpg`
     });
     setError(null);
+  }
+
+  function handleBeforePhotoPress() {
+    Alert.alert("Before photo", "Choose how to add the optional before photo.", [
+      {
+        text: "Cancel",
+        style: "cancel"
+      },
+      {
+        text: "Camera",
+        onPress: () => {
+          void pickTaskImage("camera");
+        }
+      },
+      {
+        text: "Library",
+        onPress: () => {
+          void pickTaskImage("library");
+        }
+      },
+      ...(newTaskBeforePhoto
+        ? [
+            {
+              text: "Remove",
+              style: "destructive" as const,
+              onPress: () => {
+                setNewTaskBeforePhoto(null);
+              }
+            }
+          ]
+        : [])
+    ]);
   }
 
   async function handleReorder(nextLists: TaskList[]) {
@@ -454,33 +484,31 @@ export default function ListsScreen() {
               </View>
               <View style={styles.compactSection}>
                 <Text style={styles.compactLabel}>Before photo</Text>
-                {newTaskBeforePhoto ? (
-                  <Image source={{ uri: newTaskBeforePhoto.uri }} style={styles.composerImagePreview} />
-                ) : (
-                  <View style={styles.imageEmptyState}>
-                    <Text style={styles.stateText}>A before photo is required to create the task.</Text>
-                  </View>
-                )}
-                <View style={styles.chipRow}>
-                  <Pressable onPress={() => void pickTaskImage("camera")} style={styles.filterChip}>
-                    <Text style={styles.filterChipLabel}>Camera</Text>
-                  </Pressable>
-                  <Pressable onPress={() => void pickTaskImage("library")} style={styles.filterChip}>
-                    <Text style={styles.filterChipLabel}>Library</Text>
-                  </Pressable>
+                <Pressable
+                  onPress={handleBeforePhotoPress}
+                  style={({ pressed }) => [
+                    styles.photoPickerBox,
+                    pressed && styles.buttonPressed
+                  ]}
+                >
                   {newTaskBeforePhoto ? (
-                    <Pressable onPress={() => setNewTaskBeforePhoto(null)} style={styles.filterChip}>
-                      <Text style={styles.filterChipLabel}>Remove</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
+                    <>
+                      <Image source={{ uri: newTaskBeforePhoto.uri }} style={styles.composerImagePreview} />
+                      <Text style={styles.stateText}>Tap to replace or remove photo.</Text>
+                    </>
+                  ) : (
+                    <View style={styles.imageEmptyState}>
+                      <Text style={styles.stateText}>Before photo optional. Tap to add one.</Text>
+                    </View>
+                  )}
+                </Pressable>
               </View>
               <Pressable
-                disabled={savingTask || newTaskTitle.trim().length === 0 || !newTaskBeforePhoto}
+                disabled={savingTask || newTaskTitle.trim().length === 0}
                 onPress={() => handleCreateTask(item.id)}
                 style={[
                   styles.primaryButton,
-                  (savingTask || newTaskTitle.trim().length === 0 || !newTaskBeforePhoto) && styles.buttonDisabled
+                  (savingTask || newTaskTitle.trim().length === 0) && styles.buttonDisabled
                 ]}
               >
                 <Text style={styles.primaryButtonLabel}>
@@ -844,6 +872,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     height: 160,
     width: "100%"
+  },
+  photoPickerBox: {
+    gap: 10
   },
   imageEmptyState: {
     alignItems: "center",

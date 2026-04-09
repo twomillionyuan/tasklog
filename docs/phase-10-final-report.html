@@ -1,235 +1,71 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>TaskSnap Phase 10 Final Report</title>
+<style>body{font-family:-apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif;max-width:860px;margin:40px auto;line-height:1.45;color:#222;padding:0 24px}h1,h2,h3{line-height:1.2}h1{font-size:28px}h2{font-size:20px;margin-top:28px}h3{font-size:16px;margin-top:22px}p{margin:10px 0}ul,ol{margin:8px 0 14px 22px}li{margin:4px 0}code{font-family:Menlo,monospace;background:#f3f3f3;padding:1px 4px;border-radius:4px}table{border-collapse:collapse;width:100%;margin:14px 0}th,td{border:1px solid #d9d9d9;padding:7px 9px;vertical-align:top;text-align:left}th{background:#f7f7f7}</style></head><body>
 <h1>TaskSnap Phase 10 Final Report</h1>
-<p>Date: 2026-04-08</p>
-<h2>Executive Summary</h2>
-<p>TaskSnap is the final outcome of this assignment, to build a real mobile app with OSC as the backend, manage that backend through MCP, document friction, and turn those findings into concrete platform proposals.</p>
-<p>The final result is a working Expo mobile app backed by an OSC-hosted Node.js API, PostgreSQL, OSC storage, parameter-store configuration, and a catalog-service integration through CouchDB. The project was exercised across two OSC teams during the assignment:</p>
+<p>Date: 2026-04-09</p>
+<h2>Summary</h2>
+<p>I completed the OSC MCP-first assignment by building <code>TaskSnap</code>, a mobile to-do app in Expo with an OSC backend.</p>
+<p>The final stack uses:</p>
 <ul>
-<li><code>Ebba</code> team: retained deployment and day-to-day app iteration</li>
-<li><code>OpenEvents</code> team: reproducibility run, backup/restore validation, bucket inspection retry, domain testing, and production-readiness verification</li>
+<li>OSC My Apps for the Node.js API</li>
+<li>PostgreSQL for app data</li>
+<li>OSC storage for task photos</li>
+<li>parameter store for config</li>
+<li>CouchDB as the catalog-service integration for activity history</li>
 </ul>
-<p>The <code>OpenEvents</code> deployment was later removed so TaskSnap remains deployed only in <code>Ebba</code>. That cleanup is part of the project history and is relevant to the final DX findings because it exposed which operations were easy to repeat through MCP and which ones still felt brittle or ambiguous.</p>
-<p>Current live production URL:</p>
+<p>Final live backend:</p>
 <ul>
 <li><code>https://tasklogbackend.apps.osaas.io</code></li>
 </ul>
-<p>The strongest parts of OSC were MCP-driven service provisioning, flexible composition of open-source backend primitives, and the ability to get a real backend live quickly. The weakest parts were long-running MCP operations with unclear completion state, incomplete mobile-BaaS ergonomics, confusing app-build/runtime behavior in My Apps, and a production-facing managed-domain routing bug.</p>
-<h2>Scope and Sources</h2>
-<p>This Phase 10 report is based on the full project record rather than only the latest repo snapshot.</p>
-<p>Sources used:</p>
-<ul>
-<li>repository code and docs in <code>/Users/ebbalanyuan/spotlog</code></li>
-<li>git history from <code>ee39c3a</code> through <code>3e3f138</code></li>
-<li>live deployment and debugging work completed through OSC MCP during this project</li>
-<li>the running <code>feedback-log.md</code></li>
-<li>app iteration and deployment history captured in chat during the assignment</li>
-<li>final Expo / EAS packaging work for downloadable builds</li>
-</ul>
+<p>The app was developed on iOS first, tested on Android, and deployed through OSC workflows driven by MCP.</p>
 <h2>What Was Built</h2>
-<p>TaskSnap is a mobile to-do app built with Expo and React Native. Users can register, log in, create multiple lists, add tasks inside those lists, rank work by urgency and due date, mark tasks complete, reorder lists, attach files to tasks, and track progress across open, overdue, and completed work.</p>
-<p>The backend stack exercises the same OSC capabilities the original SpotLog assignment required:</p>
+<p>TaskSnap lets a user:</p>
 <ul>
-<li>PostgreSQL for user, list, task, and completion data</li>
-<li>OSC storage bucket for task attachments</li>
-<li>Node.js API on OSC My Apps</li>
-<li>parameter store for configuration and secrets</li>
-<li>managed domain operations through MCP</li>
-<li>one catalog service integration through CouchDB for activity history</li>
+<li>register and log in</li>
+<li>create multiple task lists</li>
+<li>add tasks with urgency and due dates</li>
+<li>reorder lists</li>
+<li>add an optional before photo when creating a task</li>
+<li>complete a task by adding an after photo</li>
+<li>view activity history and progress stats</li>
 </ul>
-<h2>Project Timeline</h2>
-<p>Key milestones from git history and chat history:</p>
-<ol>
-<li><code>ee39c3a</code> to <code>bbdff23</code>: initial SpotLog scaffold, OSC backend connection, and mobile shell</li>
-<li><code>133e008</code> to <code>cbcfdbc</code>: live OSC Postgres and storage integration, direct API start in OSC, app-health logging, and deploy hardening</li>
-<li><code>bedab37</code> to <code>530ad99</code>: OSC friction documentation, CouchDB activity integration, realtime polling, and deployment fixes</li>
-<li><code>cee1cb4</code>: product pivot from SpotLog to TaskSnap</li>
-<li><code>6d32e19</code> and <code>3e3f138</code>: assignment alignment, checklist, final docs, load testing, and evidence consolidation</li>
-<li>post-git work in chat: <code>OpenEvents</code> reprovisioning, backup/restore validation, bucket inspection retry, managed-domain bug verification, Android/iOS packaging setup, and final cleanup back to <code>Ebba</code>-only deployment</li>
-</ol>
-<h2>Final Technical State</h2>
-<h3>App</h3>
-<ul>
-<li>Expo React Native client</li>
-<li>iOS-first development workflow validated in Simulator</li>
-<li>Android workflow validated in emulator</li>
-<li>EAS project configured for downloadable builds</li>
-</ul>
-<h3>Backend</h3>
-<ul>
-<li>Node.js API deployed on OSC My Apps</li>
-<li>PostgreSQL-backed persistence</li>
-<li>parameter-store based configuration</li>
-<li>task attachment upload/download through OSC storage</li>
-<li>CouchDB-backed activity history as the catalog-service integration</li>
-<li>current Ebba deployment verified with <code>200 OK</code> on <code>/health</code></li>
-</ul>
-<h3>Packaging</h3>
-<ul>
-<li>Expo project linked to EAS as <code>@onemillionyuan/tasksnap</code></li>
-<li>Android preview build started successfully</li>
-<li>iOS installable build blocked only by Apple Developer account enrollment, not by app code or Expo configuration</li>
-</ul>
-<h3>Deployment History</h3>
-<ul>
-<li><code>Ebba</code> team: retained deployment</li>
-<li><code>OpenEvents</code> team: temporary full reprovision used to prove reproducibility, backup/restore, domain mapping, and bucket inspection</li>
-<li><code>OpenEvents</code> TaskSnap app, databases, and config services were removed after verification so the project is no longer deployed there</li>
-</ul>
-<h2>Phase-by-Phase Completion</h2>
-<table>
-<thead>
-<tr>
-<th>Phase</th>
-<th>Status</th>
-<th>Notes</th>
-</tr>
-</thead>
-<tbody><tr>
-<td>1. MCP-Driven Infrastructure</td>
-<td>Complete</td>
-<td>Postgres, storage, parameter store, and app stack were provisioned through MCP. Reprovisioning was demonstrated again in <code>OpenEvents</code>.</td>
-</tr>
-<tr>
-<td>2. Deploy Backend API via MCP</td>
-<td>Complete</td>
-<td>The Node.js API was deployed, restarted, rebuilt, logged, and tested through MCP-managed OSC app workflows.</td>
-</tr>
-<tr>
-<td>3. Database Integration</td>
-<td>Complete</td>
-<td>CRUD, migrations, parameter-store config, backup creation, backup listing, and restore were all exercised. Restore was verified with a sentinel-task test.</td>
-</tr>
-<tr>
-<td>4. Mobile App</td>
-<td>Complete</td>
-<td>Expo app built and run against OSC backend on iOS and Android, with auth, lists, tasks, edit flows, pull-to-refresh, loading, and error handling.</td>
-</tr>
-<tr>
-<td>5. File Storage via OSC Buckets</td>
-<td>Complete</td>
-<td>Task attachments upload through the API to OSC storage and render from storage URLs. Bucket inspection through MCP was tested successfully in <code>OpenEvents</code> after earlier failure elsewhere.</td>
-</tr>
-<tr>
-<td>6. Catalog Service Integration</td>
-<td>Complete</td>
-<td>CouchDB was integrated for activity history and feed-style sync visibility.</td>
-</tr>
-<tr>
-<td>7. Authentication</td>
-<td>Complete</td>
-<td>Email/password auth, protected endpoints, SecureStore token storage, and per-user data scoping were implemented.</td>
-</tr>
-<tr>
-<td>8. Production Readiness via MCP</td>
-<td>Complete with one platform bug</td>
-<td>App diagnostics, logs, restart flows, config switching, domain mapping, and architecture documentation were completed. Managed-domain routing remains buggy.</td>
-</tr>
-<tr>
-<td>9. Stress Testing and Limits</td>
-<td>Complete</td>
-<td>Load test coverage was added for current TaskSnap endpoints with <code>10</code>, <code>50</code>, and <code>100</code> concurrent requests.</td>
-</tr>
-<tr>
-<td>10. Final Report and Proposals</td>
-<td>Complete</td>
-<td>This document, the feedback log, checklist, and presentation brief capture the final findings and recommendations.</td>
-</tr>
+<h2>Assignment Status</h2>
+<table><thead><tr><th>Phase</th><th>Status</th><th>Notes</th></tr></thead><tbody>
+<tr><td>1</td><td>Complete</td><td>Infrastructure provisioned through MCP.</td></tr>
+<tr><td>2</td><td>Complete</td><td>API deployed and managed on OSC.</td></tr>
+<tr><td>3</td><td>Complete</td><td>Postgres-backed CRUD, config flow, backup, and restore tested.</td></tr>
+<tr><td>4</td><td>Complete</td><td>Expo app works on iOS and Android.</td></tr>
+<tr><td>5</td><td>Complete</td><td>Task photos upload to OSC storage and render in the app.</td></tr>
+<tr><td>6</td><td>Complete</td><td>CouchDB integrated for activity history.</td></tr>
+<tr><td>7</td><td>Complete</td><td>Auth, protected routes, SecureStore token storage, and per-user data are in place.</td></tr>
+<tr><td>8</td><td>Complete</td><td>Domain, logs, diagnostics, restart/config flows, and architecture documentation were covered.</td></tr>
+<tr><td>9</td><td>Complete</td><td>Load testing completed for current app endpoints.</td></tr>
+<tr><td>10</td><td>Complete</td><td>Final report, checklist, presentation brief, and feedback log are included.</td></tr>
 </tbody></table>
-<h2>What Worked Well</h2>
+<h2>Main Findings</h2>
+<h3>What Worked Well</h3>
 <ul>
-<li>MCP made it possible to provision real infrastructure quickly without falling back to the web UI for normal happy-path operations.</li>
-<li>OSC’s service model was composable enough to support a nontrivial mobile app backend from open-source primitives.</li>
-<li>My Apps was capable of hosting a real monorepo-based Node backend after the deploy scripts were adapted to the runner behavior.</li>
-<li>PostgreSQL, bucket storage, and parameter-store config were enough to support a meaningful production-like app.</li>
-<li>The ability to reprovision the stack in a second team was strong evidence that OSC can support MCP-first infrastructure workflows.</li>
+<li>MCP made it fast to provision infrastructure without switching to the web UI.</li>
+<li>OSC’s open-source service model was flexible enough for a real mobile backend.</li>
+<li>Reprovisioning the stack in a second team showed that the setup was repeatable.</li>
+<li>My Apps was usable for a real Node backend once the deploy scripts were adjusted.</li>
 </ul>
-<h2>Categorized Findings</h2>
-<h3>MCP Gaps</h3>
+<h3>Main Friction</h3>
 <ul>
-<li><code>setup-parameter-store</code> can appear to fail or time out even when the parameter store and backing Valkey instance were actually created.</li>
-<li>Long-running flows such as backup and restore still require manual follow-up polling rather than returning a durable job handle with explicit status.</li>
-<li>Some catalog services can be created and described through MCP but not explored deeply enough at the endpoint level to support fully MCP-native integration.</li>
-<li>Domain tools can report a mapping as complete while the routed hostname still serves the wrong upstream.</li>
-<li>Bucket operations were not consistently reliable across environments. The same bucket-inspection step failed in one environment and later worked in another.</li>
+<li>Long-running MCP operations were hard to interpret because completion state was not always clear.</li>
+<li>My Apps build and cache behavior was hard to debug.</li>
+<li>Domain routing was inconsistent during the OpenEvents verification run.</li>
+<li>OSC does not yet have a strong out-of-the-box mobile BaaS path for auth and realtime features.</li>
 </ul>
-<h3>BaaS Gaps</h3>
-<ul>
-<li>OSC does not currently provide a polished mobile-ready auth product comparable to Firebase Auth or Supabase Auth.</li>
-<li>There is no first-class realtime sync path targeted at CRUD-heavy mobile apps. TaskSnap had to approximate this with polling and activity history rather than a native event stream.</li>
-<li>Storage works as an infrastructure primitive but lacks higher-level mobile helpers such as presigned-upload workflows, thumbnail processing, or stronger client-facing conventions.</li>
-<li>Developers still need to compose several backend pieces manually rather than starting from a cohesive mobile-backend solution.</li>
-</ul>
-<h3>DX Improvements</h3>
-<ul>
-<li>My Apps build/runtime behavior is not transparent enough. Dependency-install mode, workspace handling, cache reuse, and devDependency expectations were major sources of confusion.</li>
-<li>Errors are often technically correct but not actionable enough for debugging inside Claude Code without extra probing.</li>
-<li>Service naming and schema conventions can drift from docs, which slows down first-time provisioning.</li>
-<li>Packaging the mobile app for download required extra manual steps outside OSC, which is expected, but the separation between backend readiness and mobile-release readiness should be called out more clearly in assignment framing.</li>
-</ul>
-<h3>Bugs</h3>
-<ul>
-<li>Managed <code>apps.dev.osaas.io</code> domain routing can serve the wrong content even after successful MCP mapping.</li>
-<li><code>setup-parameter-store</code> can time out after completing real backend work.</li>
-<li>Backup reliability is inconsistent. One backup attempt failed with <code>FailureTarget</code> before a later backup succeeded.</li>
-<li>Cached app dependency state in My Apps can look like an application regression until a rebuild and cache-refresh path is forced.</li>
-<li>Bucket inspection behavior was inconsistent across environments before succeeding in the final reprovisioned setup.</li>
-</ul>
-<h2>Evidence Highlights</h2>
-<ul>
-<li>The project was not only built once; it was also reprovisioned in a second OSC team to test reproducibility.</li>
-<li>Backup/restore was validated with a real sentinel-task check rather than only trusting control-plane status.</li>
-<li>Bucket inspection was tested again after an earlier failure, which turned a suspected universal storage problem into a more precise environment-dependent finding.</li>
-<li>Managed-domain mapping was verified as a genuine platform issue because MCP showed the mapping as active while the runner URL still served the correct app and the managed domain did not.</li>
-<li>Android packaging progressed to a real EAS build, and iOS packaging reached the Apple enrollment boundary rather than failing on project configuration.</li>
-</ul>
-<h2>Top 5 Improvement Proposals</h2>
-<h3>1. Fix managed domain routing for My Apps</h3>
-<ul>
-<li>Problem: OSC can report a successful managed-domain mapping while the mapped hostname serves the wrong content.</li>
-<li>Suggested solution: Add post-map verification before reporting success, and show route-target mismatch details in <code>diagnose-my-app</code>.</li>
-<li>Who benefits: Any team exposing OSC apps behind managed or custom domains.</li>
-<li>Impact: Very high. This is a production-facing correctness issue.</li>
-</ul>
-<h3>2. Turn long-running MCP operations into explicit jobs</h3>
-<ul>
-<li>Problem: Parameter-store setup, backup, and restore still feel ambiguous because initiating calls can time out or complete without a durable progress contract.</li>
-<li>Suggested solution: Return a job id plus machine-readable states such as <code>queued</code>, <code>running</code>, <code>succeeded</code>, and <code>failed</code>, with a dedicated polling tool.</li>
-<li>Who benefits: MCP-first users, AI-agent workflows, and anyone building reproducible OSC automation.</li>
-<li>Impact: Very high. It would remove much of the uncertainty in MCP-led operations.</li>
-</ul>
-<h3>3. Expose clearer My Apps build and cache diagnostics</h3>
-<ul>
-<li>Problem: Build/runtime failures were hard to interpret because install mode, workspace package inclusion, and cache provenance were not obvious.</li>
-<li>Suggested solution: Add first-class build metadata, lockfile fingerprint visibility, cache hit/miss reporting, and a documented cache-bust path.</li>
-<li>Who benefits: Monorepo users and developers deploying TypeScript/Node services with nontrivial build steps.</li>
-<li>Impact: High. This would significantly reduce debugging time.</li>
-</ul>
-<h3>4. Provide a first-class mobile auth and realtime starter path</h3>
-<ul>
-<li>Problem: The biggest gap versus Firebase and Supabase is not raw infrastructure, but the lack of a cohesive mobile BaaS opinion for auth plus sync.</li>
-<li>Suggested solution: Offer an MCP-provisioned mobile starter stack with auth, token refresh guidance, storage conventions, and a documented realtime/event option.</li>
-<li>Who benefits: Mobile teams deciding whether OSC can replace more opinionated BaaS platforms.</li>
-<li>Impact: High. This would make OSC much more attractive for this assignment’s target use case.</li>
-</ul>
-<h3>5. Improve service endpoint discoverability and schema consistency</h3>
-<ul>
-<li>Problem: Some services are easy to reason about through MCP while others stop at config schema or expose naming mismatches against docs.</li>
-<li>Suggested solution: Expand endpoint metadata coverage, publish OpenAPI where possible, and align live schema names with docs and examples.</li>
-<li>Who benefits: New users, AI agents, and developers composing multiple OSC services into one app backend.</li>
-<li>Impact: Medium-high. This would improve both first-run success and confidence.</li>
-</ul>
-<h2>Comparison to Firebase and Supabase</h2>
-<ul>
-<li>OSC is stronger on composability, open-source primitives, and AI-driven infrastructure control through MCP.</li>
-<li>Firebase and Supabase are stronger on integrated developer experience for mobile apps, especially auth, client SDK ergonomics, and realtime features.</li>
-<li>OSC’s differentiator is real, but to compete credibly for mobile-backend use cases it needs more predictable operations and a stronger opinionated BaaS layer on top of the primitives.</li>
-</ul>
-<h2>Recommendation to the Team</h2>
-<ul>
-<li>Keep investing in MCP as a core product surface because it is already a meaningful differentiator.</li>
-<li>Prioritize production confidence before expanding the catalog further. Domain correctness and explicit long-running job tracking matter more than adding more surface area.</li>
-<li>Strengthen the mobile-backend story by packaging auth, storage, and sync into a clearer recommended path.</li>
-<li>Use this assignment as an internal benchmark: the platform is already capable, but the rough edges show up exactly where a real mobile app moves from prototype to production.</li>
-</ul>
-<h2>Bottom Line</h2>
-<p>TaskSnap proves that OSC can support a real MCP-first mobile application stack end to end. The platform is already good enough to provision infrastructure, host an API, store files, manage config, and support production-style workflows through an agent-assisted interface.</p>
-<p>The project also makes the remaining gaps concrete. The next improvements OSC should prioritize are not more basic provisioning primitives, but clearer long-running job visibility, stronger app-build diagnostics, mobile-focused BaaS ergonomics, and above all reliable domain routing.</p>
+<h2>Top 5 Improvements</h2>
+<ol>
+<li>Make long-running MCP operations return clear job states.</li>
+<li>Improve My Apps build and cache diagnostics.</li>
+<li>Fix managed-domain routing issues.</li>
+<li>Offer a more complete mobile auth and sync path.</li>
+<li>Improve service endpoint discovery and schema consistency.</li>
+</ol>
+<h2>Final Assessment</h2>
+<p>TaskSnap shows that OSC can support a full MCP-first mobile app workflow: provisioning, deployment, storage, configuration, auth, and operations.</p>
+<p>The main gaps are not basic infrastructure. The main gaps are visibility, debugging, and mobile-focused platform ergonomics.</p>
+</body></html>

@@ -130,7 +130,7 @@ export async function listActivity(userId: string, limit = 20) {
     }>;
   };
 
-  return payload.docs
+  const deduped = payload.docs
     .map((doc) => ({
       id: doc._id,
       userId: doc.userId,
@@ -141,5 +141,17 @@ export async function listActivity(userId: string, limit = 20) {
       createdAt: doc.createdAt
     }))
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .slice(0, limit);
+    .filter((event, index, events) => {
+      return (
+        index ===
+        events.findIndex(
+          (candidate) =>
+            candidate.entityType === event.entityType &&
+            candidate.entityId === event.entityId &&
+            candidate.type === event.type
+        )
+      );
+    });
+
+  return deduped.slice(0, limit);
 }

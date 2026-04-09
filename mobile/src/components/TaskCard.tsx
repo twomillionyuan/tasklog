@@ -54,8 +54,45 @@ export function TaskCard({ task, href, listName, onTaskUpdated }: TaskCardProps)
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cardColors = urgencyCardPalette[currentTask.urgency];
-  const isMissingBeforePhoto = !currentTask.beforePhotoUrl;
-  const needsAfterPhotoForCompletion = !currentTask.completed && Boolean(currentTask.beforePhotoUrl) && !currentTask.afterPhotoUrl;
+  function normalizeTaskErrorMessage(message: string) {
+    if (message === "Add both a before photo and an after photo before completing this task") {
+      return "Add an after photo before completing this task";
+    }
+
+    return message;
+  }
+
+  function isAfterPhotoRequiredMessage(message: string) {
+    return (
+      message === "Add an after photo before completing this task" ||
+      message === "Add both a before photo and an after photo before completing this task"
+    );
+  }
+
+  function promptForAfterPhoto() {
+    Alert.alert(
+      "After photo required",
+      "Add an after photo now to complete this task.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Camera",
+          onPress: () => {
+            void handlePickPhoto("after", "camera");
+          }
+        },
+        {
+          text: "Library",
+          onPress: () => {
+            void handlePickPhoto("after", "library");
+          }
+        }
+      ]
+    );
+  }
 
   async function handlePickPhoto(kind: "before" | "after", source: "camera" | "library") {
     if (!token || updating) {
@@ -111,10 +148,14 @@ export function TaskCard({ task, href, listName, onTaskUpdated }: TaskCardProps)
       } else {
         setCurrentTask(withPhoto);
         onTaskUpdated?.(withPhoto);
-        Alert.alert("Before photo added", "Now you can add an after photo when the task is finished.");
+        Alert.alert("Before photo added", "You can still add an after photo when the task is finished.");
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not complete task");
+      setError(
+        requestError instanceof Error
+          ? normalizeTaskErrorMessage(requestError.message)
+          : "Could not complete task"
+      );
     } finally {
       setUpdating(false);
     }
@@ -125,55 +166,8 @@ export function TaskCard({ task, href, listName, onTaskUpdated }: TaskCardProps)
       return;
     }
 
-    if (isMissingBeforePhoto) {
-      Alert.alert(
-        "Before photo required",
-        "Add a before photo for this task first.",
-        [
-          {
-            text: "Cancel",
-            style: "cancel"
-          },
-          {
-            text: "Camera",
-            onPress: () => {
-              void handlePickPhoto("before", "camera");
-            }
-          },
-          {
-            text: "Library",
-            onPress: () => {
-              void handlePickPhoto("before", "library");
-            }
-          }
-        ]
-      );
-      return;
-    }
-
-    if (needsAfterPhotoForCompletion) {
-      Alert.alert(
-        "After photo required",
-        "Add an after photo now to complete this task.",
-        [
-          {
-            text: "Cancel",
-            style: "cancel"
-          },
-          {
-            text: "Camera",
-            onPress: () => {
-              void handlePickPhoto("after", "camera");
-            }
-          },
-          {
-            text: "Library",
-            onPress: () => {
-              void handlePickPhoto("after", "library");
-            }
-          }
-        ]
-      );
+    if (!currentTask.completed) {
+      promptForAfterPhoto();
       return;
     }
 
@@ -188,7 +182,18 @@ export function TaskCard({ task, href, listName, onTaskUpdated }: TaskCardProps)
       setCurrentTask(updated);
       onTaskUpdated?.(updated);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Could not update task");
+      if (requestError instanceof Error) {
+        const normalizedMessage = normalizeTaskErrorMessage(requestError.message);
+
+        if (isAfterPhotoRequiredMessage(normalizedMessage)) {
+          setError(null);
+          promptForAfterPhoto();
+        } else {
+          setError(normalizedMessage);
+        }
+      } else {
+        setError("Could not update task");
+      }
     } finally {
       setUpdating(false);
     }
@@ -220,26 +225,6 @@ export function TaskCard({ task, href, listName, onTaskUpdated }: TaskCardProps)
           )}
         </View>
         <View style={styles.actionColumn}>
-          {href ? (
-            <Link href={href} asChild>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.attachmentButton,
-                  currentTask.beforePhotoUrl && styles.attachmentButtonFilled,
-                  pressed && styles.buttonPressed
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.attachmentButtonLabel,
-                    currentTask.beforePhotoUrl && styles.attachmentButtonLabelFilled
-                  ]}
-                >
-                  {currentTask.beforePhotoUrl ? "Edit before" : "Add before"}
-                </Text>
-              </Pressable>
-            </Link>
-          ) : null}
           <Pressable
             disabled={updating}
             onPress={handleCompletePress}
@@ -261,11 +246,8 @@ export function TaskCard({ task, href, listName, onTaskUpdated }: TaskCardProps)
           </Pressable>
         </View>
       </View>
-      {isMissingBeforePhoto ? (
-        <Text style={styles.helperText}>Add a before photo when you create this task.</Text>
-      ) : null}
-      {needsAfterPhotoForCompletion ? (
-        <Text style={styles.helperText}>Add an after photo from the complete button when the task is finished.</Text>
+      {!currentTask.completed ? (
+        <Text style={styles.helperText}>Press complete to add the after photo and finish the task.</Text>
       ) : null}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
@@ -331,25 +313,8 @@ const styles = StyleSheet.create({
   completeButtonDisabled: {
     backgroundColor: theme.colors.surfaceMuted
   },
-  attachmentButton: {
-    backgroundColor: theme.colors.surfaceMuted,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8
-  },
-  attachmentButtonFilled: {
-    backgroundColor: theme.colors.cardAccent
-  },
   completedButton: {
     backgroundColor: theme.colors.surfaceMuted
-  },
-  attachmentButtonLabel: {
-    color: theme.colors.subtleText,
-    fontFamily: theme.fonts.bold,
-    fontSize: 12
-  },
-  attachmentButtonLabelFilled: {
-    color: theme.colors.background
   },
   completeButtonLabel: {
     color: theme.colors.background,

@@ -916,7 +916,7 @@ export async function updateTask(
   const nextCompleted =
     typeof input.completed === "boolean" ? input.completed : existing.completed;
 
-  if (input.completed === true && (!existing.beforePhotoUrl || !existing.afterPhotoUrl)) {
+  if (input.completed === true && !existing.afterPhotoUrl) {
     throw new Error("AFTER_PHOTO_REQUIRED");
   }
 
